@@ -596,16 +596,24 @@ def get_google_drive_music():
     return None
 
 
-def get_online_poetry_voice():
-    """Find a real human poetry recitation from Wikimedia Commons; never synthesize a voice."""
+def get_online_poetry_voice(title, lines):
+    """Find a licensed human recording of this exact poem; never use unrelated recitation or synthesize speech."""
     global BACKGROUND_CREDIT
+    import html
+    import re
     from urllib.parse import urlparse
 
-    if LANG == "English":
-        searches = ["English poetry recitation spoken word", "English poem reading"]
-    else:
-        searches = ["Urdu poetry recitation shayari", "Hindi poetry recitation kavita", "Urdu spoken poetry"]
+    def normalize(value):
+        value = html.unescape(re.sub(r"<[^>]+>", " ", str(value or ""))).lower()
+        return " ".join(re.findall(r"[\w]+", value, flags=re.UNICODE))
 
+    # Search using the actual displayed poem, not generic 'poetry' keywords.
+    phrases = [normalize(line) for line in lines if len(normalize(line)) >= 12]
+    if not phrases:
+        print("Poem text is too short to verify against a human recording.")
+        return None
+
+    searches = [f'"{title}" "{lines[0]}"', f'"{lines[0]}"', f'"{title}"']
     candidates = {}
     headers = {"User-Agent": "PulsenamaPoetryVideo/1.0 (audio search)"}
     for query in searches:
@@ -628,29 +636,33 @@ def get_online_poetry_voice():
                 url = info.get("url")
                 if not url or not mime.startswith("audio/"):
                     continue
-                title = str(page.get("title") or "")
                 meta = info.get("extmetadata") or {}
-                description = str((meta.get("ImageDescription") or {}).get("value") or "")
-                searchable = (title + " " + description).lower()
-                if not any(word in searchable for word in (
-                    "poetry", "poem", "recitation", "spoken word", "shayari",
-                    "ghazal", "nazm", "kalam", "kavita"
-                )):
+                title_text = page.get("title") or ""
+                description = (meta.get("ImageDescription") or {}).get("value") or ""
+                searchable = normalize(title_text + " " + description)
+                # Require the recording metadata/transcript to contain at least one
+                # complete displayed poem line. Generic poetry audio is not enough.
+                matched = [phrase for phrase in phrases if phrase in searchable]
+                if not matched:
                     continue
-                if any(word in searchable for word in ("instrumental", "karaoke", "album track")):
-                    continue
-                score = sum(word in searchable for word in (
-                    "recitation", "spoken word", "poetry", "poem", "shayari",
-                    "ghazal", "nazm", "kavita"
-                ))
-                if LANG != "English" and any(word in searchable for word in ("urdu", "hindi", "shayari", "ghazal", "kavita")):
-                    score += 3
-                candidates[title] = (score, page, info)
-        except (requests.RequestException, ValueError, KeyError) as exc:
-            print(f"Wikimedia audio search failed for '{query}': {exc}")
 
-    ranked = sorted(candidates.values(), key=lambda item: item[0], reverse=True)
-    for _, page, info in ranked[:30]:
+                license_name = (meta.get("LicenseShortName") or {}).get("value", "")
+                license_text = normalize(license_name)
+                usage = normalize((meta.get("UsageTerms") or {}).get("value", ""))
+                permitted = (
+                    "cc0" in license_text or "public domain" in license_text
+                    or "cc by" in license_text or "cc by sa" in license_text
+                    or "creative commons attribution" in usage
+                    or "public domain" in usage
+                )
+                if not permitted:
+                    print(f"Skipping exact-text audio with unclear/restricted reuse terms: {title_text}")
+                    continue
+                candidates[title_text] = (page, info, matched[0])
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            print(f"Wikimedia exact-poem audio search failed for '{query}': {exc}")
+
+    for title_text, (page, info, matched_phrase) in candidates.items():
         url = info.get("url")
         suffix = Path(urlparse(url).path).suffix.lower()
         if suffix not in (".mp3", ".ogg", ".oga", ".opus", ".wav", ".flac", ".m4a"):
@@ -678,21 +690,20 @@ def get_online_poetry_voice():
 
             meta = info.get("extmetadata") or {}
             artist = (meta.get("Artist") or {}).get("value", "Unknown contributor")
-            license_name = (meta.get("LicenseShortName") or {}).get("value", "Wikimedia Commons")
-            page_url = "https://commons.wikimedia.org/wiki/" + page.get("title", "").replace(" ", "_")
+            license_name = (meta.get("LicenseShortName") or {}).get("value", "Unknown")
+            page_url = "https://commons.wikimedia.org/wiki/" + title_text.replace(" ", "_")
             BACKGROUND_CREDIT += (
-                f"\nPoetry voice: {page.get('title', 'Audio recitation')} | "
-                f"Voice credit: {artist} | License: {license_name} | {page_url}"
+                f"\nPoetry voice: {title_text} | Voice credit: {artist} | "
+                f"License: {license_name} | {page_url}"
             )
-            print(f"Using a human poetry recitation from Wikimedia Commons: {page.get('title')}.")
+            print(f"Using licensed human recording verified against the displayed poem: {title_text}.")
             return path
         except (requests.RequestException, OSError, subprocess.SubprocessError) as exc:
-            print(f"Poetry voice candidate failed; trying another recording: {exc}")
+            print(f"Exact-poem recording download failed; trying another: {exc}")
             path.unlink(missing_ok=True)
 
-    print("No suitable human poetry recitation was found; no AI voice or unrelated song will be substituted.")
+    print("No licensed human recording matching the displayed poem was found; refusing to create/publish an instrumental-only video.")
     return None
-
 
 def get_online_music():
     """Choose vocals by poem language: English tracks for English, PAK/IND artists for Urdu."""
@@ -956,7 +967,9 @@ def main():
         raise RuntimeError("No usable internet photo/video could be downloaded; no AI image will be generated.")
 
     # Search for an actual human poetry recitation, not a song or synthetic narration.
-    voice=get_online_poetry_voice()
+    voice=get_online_poetry_voice(title,lines)
+    if voice is None:
+        raise RuntimeError("No licensed human recitation matching this exact poem was found. Video generation stopped; instrumental-only output will not be marked successful or published.")
     music=make_mood_music(title,lines)
     render_video(title,lines,bg,music,voice)
     print(f"SUCCESS: {OUT} ({OUT.stat().st_size} bytes). Video generation completed.")
