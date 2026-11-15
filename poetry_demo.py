@@ -1320,7 +1320,7 @@ def make_qawwali_video():
         print("Pexels/Pixabay did not return a usable clip; trying a no-key Internet Archive video source.")
         bg=get_archive_video()
     if bg is None:
-        raise RuntimeError("No usable moving background video was found from Pexels, Pixabay, or Internet Archive. Check network access or add a video file to backgrounds/.")
+        raise RuntimeError("No usable moving background video was found from Pexels, Pixabay, or Internet Archive. Check network access and rerun; no still image or Qawwal performance footage will be substituted.")
 
     DURATION=min(60.0,get_audio_duration(audio_path))
     if DURATION<12:
