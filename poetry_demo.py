@@ -1214,7 +1214,7 @@ def make_qawwali_video():
         raise last_error or RuntimeError("Wikimedia request failed")
 
     # Pick a visual mood for the background; never use the Qawwal's live footage.
-    MOOD=random.choice(["qawwali","spiritual","peaceful"])
+    MOOD="qawwali"  # Keep every background provider on Qawwali/Sufi-specific search terms.
     candidates=[]
     seen=set()
     audio_path=WORK/"qawwali_original_audio.mp3"
