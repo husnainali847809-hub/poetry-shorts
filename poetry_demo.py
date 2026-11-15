@@ -1129,7 +1129,9 @@ def transcribe_qawwali_words(audio_path):
     print(f"Transcribing Qawwali lyrics with Whisper ({model_name}); word-level timestamps enabled.")
     model = WhisperModel(model_name, device="cpu", compute_type="int8")
     segments, info = model.transcribe(
-        str(audio_path), beam_size=3, word_timestamps=True,
+        str(audio_path), language="ur", task="transcribe",
+        initial_prompt="یہ اردو قوالی کے بول ہیں۔ صرف اردو رسم الخط میں لکھیں، ہندی یا دیوناگری رسم الخط استعمال نہ کریں۔",
+        beam_size=5, word_timestamps=True,
         vad_filter=True, condition_on_previous_text=True
     )
     words = []
@@ -1145,6 +1147,11 @@ def transcribe_qawwali_words(audio_path):
 
     if not words:
         raise RuntimeError("Whisper could not detect Qawwali lyrics; refusing to create a lyric-free Qawwali reel.")
+
+    # Never publish Devanagari/Hindi-script captions; fail rather than display the wrong script.
+    full_transcript = " ".join(plain)
+    if any("\\u0900" <= char <= "\\u097f" for char in full_transcript):
+        raise RuntimeError("Whisper returned Devanagari/Hindi text despite Urdu mode. Refusing to publish incorrect-script captions; use a clearer Urdu recording.")
 
     # Group 2–5 spoken words per caption. Keep each caption synchronized to the singer.
     groups = []
