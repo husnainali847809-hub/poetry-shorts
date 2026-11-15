@@ -16,10 +16,9 @@ MODEL=os.getenv("OPENROUTER_MODEL","openrouter/free")
 MOOD=random.choice(["sad","romantic","motivational","deep","peaceful","rain","memories"])
 # Pakistan schedule: 9 AM, 12 PM, 6 PM Urdu; 3 PM Punjabi; 9 PM English.
 SCHEDULE_CRON=os.getenv("SCHEDULE_CRON","").strip()
-VIDEO_MODE_OVERRIDE=os.getenv("VIDEO_MODE_OVERRIDE","").strip().lower()
-VIDEO_MODE=VIDEO_MODE_OVERRIDE if VIDEO_MODE_OVERRIDE in ("qawwali","poetry") else "poetry"
+# Poetry-only mode: Qawwali generation is disabled.
 def scheduled_language():
-    if VIDEO_MODE == "poetry" and os.getenv("GITHUB_EVENT_NAME") == "schedule":
+    if os.getenv("GITHUB_EVENT_NAME") == "schedule":
         if SCHEDULE_CRON == "0 10 * * *":
             return "Punjabi"
         if SCHEDULE_CRON == "0 16 * * *":
@@ -1407,17 +1406,7 @@ def make_qawwali_video():
 
 def main():
     global DURATION
-    if VIDEO_MODE == "qawwali":
-        try:
-            make_qawwali_video()
-            return
-        except RuntimeError as exc:
-            # Never substitute another singer for Nusrat. If no verified,
-            # permitted Nusrat recording is available, keep the daily pipeline
-            # alive by generating the normal poetry video instead.
-            if "No verified Nusrat Fateh Ali Khan Qawwali audio found" not in str(exc):
-                raise
-            print("Verified Nusrat audio is unavailable; safely falling back to a poetry video (no other Qawwal will be used).")
+    # Always generate poetry. Qawwali mode is intentionally disabled.
     print(f"Auto-selected: {MOOD} mood / {LANG} / {DURATION}s.")
     title,lines=make_poem()
     lines=lines[:3]
