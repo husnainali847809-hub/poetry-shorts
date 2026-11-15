@@ -595,6 +595,105 @@ def get_google_drive_music():
     print("Google Drive song library is not connected yet; continuing to the existing song source.")
     return None
 
+
+def get_online_poetry_voice():
+    """Find a real human poetry recitation from Wikimedia Commons; never synthesize a voice."""
+    global BACKGROUND_CREDIT
+    from urllib.parse import urlparse
+
+    if LANG == "English":
+        searches = ["English poetry recitation spoken word", "English poem reading"]
+    else:
+        searches = ["Urdu poetry recitation shayari", "Hindi poetry recitation kavita", "Urdu spoken poetry"]
+
+    candidates = {}
+    headers = {"User-Agent": "PulsenamaPoetryVideo/1.0 (audio search)"}
+    for query in searches:
+        try:
+            response = requests.get(
+                "https://commons.wikimedia.org/w/api.php",
+                params={
+                    "action": "query", "format": "json", "generator": "search",
+                    "gsrsearch": query + " filetype:audio", "gsrnamespace": 6,
+                    "gsrlimit": 30, "prop": "imageinfo",
+                    "iiprop": "url|mime|extmetadata",
+                },
+                headers=headers, timeout=30,
+            )
+            response.raise_for_status()
+            pages = (response.json().get("query") or {}).get("pages") or {}
+            for page in pages.values():
+                info = (page.get("imageinfo") or [{}])[0]
+                mime = str(info.get("mime") or "").lower()
+                url = info.get("url")
+                if not url or not mime.startswith("audio/"):
+                    continue
+                title = str(page.get("title") or "")
+                meta = info.get("extmetadata") or {}
+                description = str((meta.get("ImageDescription") or {}).get("value") or "")
+                searchable = (title + " " + description).lower()
+                if not any(word in searchable for word in (
+                    "poetry", "poem", "recitation", "spoken word", "shayari",
+                    "ghazal", "nazm", "kalam", "kavita"
+                )):
+                    continue
+                if any(word in searchable for word in ("instrumental", "karaoke", "album track")):
+                    continue
+                score = sum(word in searchable for word in (
+                    "recitation", "spoken word", "poetry", "poem", "shayari",
+                    "ghazal", "nazm", "kavita"
+                ))
+                if LANG != "English" and any(word in searchable for word in ("urdu", "hindi", "shayari", "ghazal", "kavita")):
+                    score += 3
+                candidates[title] = (score, page, info)
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            print(f"Wikimedia audio search failed for '{query}': {exc}")
+
+    ranked = sorted(candidates.values(), key=lambda item: item[0], reverse=True)
+    for _, page, info in ranked[:30]:
+        url = info.get("url")
+        suffix = Path(urlparse(url).path).suffix.lower()
+        if suffix not in (".mp3", ".ogg", ".oga", ".opus", ".wav", ".flac", ".m4a"):
+            suffix = ".audio"
+        path = WORK / ("poetry_voice" + suffix)
+        try:
+            with requests.get(url, stream=True, timeout=90, headers=headers) as download:
+                download.raise_for_status()
+                if "audio" not in download.headers.get("Content-Type", "").lower():
+                    continue
+                with path.open("wb") as out:
+                    for chunk in download.iter_content(256 * 1024):
+                        if chunk:
+                            out.write(chunk)
+            if path.stat().st_size < 12000:
+                path.unlink(missing_ok=True)
+                continue
+            probe = subprocess.run(
+                ["ffmpeg", "-v", "error", "-i", str(path), "-t", "2", "-f", "null", "-"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            )
+            if probe.returncode != 0:
+                path.unlink(missing_ok=True)
+                continue
+
+            meta = info.get("extmetadata") or {}
+            artist = (meta.get("Artist") or {}).get("value", "Unknown contributor")
+            license_name = (meta.get("LicenseShortName") or {}).get("value", "Wikimedia Commons")
+            page_url = "https://commons.wikimedia.org/wiki/" + page.get("title", "").replace(" ", "_")
+            BACKGROUND_CREDIT += (
+                f"\nPoetry voice: {page.get('title', 'Audio recitation')} | "
+                f"Voice credit: {artist} | License: {license_name} | {page_url}"
+            )
+            print(f"Using a human poetry recitation from Wikimedia Commons: {page.get('title')}.")
+            return path
+        except (requests.RequestException, OSError, subprocess.SubprocessError) as exc:
+            print(f"Poetry voice candidate failed; trying another recording: {exc}")
+            path.unlink(missing_ok=True)
+
+    print("No suitable human poetry recitation was found; no AI voice or unrelated song will be substituted.")
+    return None
+
+
 def get_online_music():
     """Choose vocals by poem language: English tracks for English, PAK/IND artists for Urdu."""
     global BACKGROUND_CREDIT
@@ -803,30 +902,39 @@ def make_mood_music(title, lines):
     return wav_path
 
 
-def render_video(title,lines,bg,music):
+def render_video(title,lines,bg,music,voice=None):
     page=text_page_png(title,lines)
     if bg.suffix.lower()==".mp4":
         inputs=["-stream_loop","-1","-i",str(bg),"-loop","1","-i",str(page)]
     else:
         inputs=["-loop","1","-i",str(bg),"-loop","1","-i",str(page)]
-    # Loop downloaded music if shorter than the video; generated WAV already matches duration.
-    if music.suffix.lower() != ".wav":
-        inputs += ["-stream_loop","-1","-i",str(music)]
-    else:
-        inputs += ["-i",str(music)]
-    # A deliberate black opening, then a slow cinematic reveal of the photograph.
+    # Music is an original instrumental bed. A real recitation, when found, stays in front.
+    inputs += ["-i",str(music)]
+    if voice is not None:
+        inputs += ["-i",str(voice)]
+
     base="[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.00012,1.06)':d=1:s=1080x1920:fps=24,setsar=1,trim=duration="+str(DURATION)+",setpts=PTS-STARTPTS,fade=t=in:st=0.75:d=1.15[bg]"
     filters=[base,
       "[1:v]format=rgba,fade=t=in:st=1.35:d=0.65:alpha=1[poem]",
-      "[bg][poem]overlay=(W-w)/2:(H-h)/2:enable='between(t,1.30,"+str(DURATION)+")'[vout]",
-      "[2:a]volume=1.6,loudnorm=I=-14:TP=-1.0:LRA=8,alimiter=limit=0.99,afade=t=in:st=0:d=1.25,afade=t=out:st="+str(max(0,DURATION-3))+":d=3[aout]"]
+      "[bg][poem]overlay=(W-w)/2:(H-h)/2:enable='between(t,1.30,"+str(DURATION)+")'[vout]"]
+    if voice is not None:
+        filters += [
+          "[2:a]volume=0.13,atrim=duration="+str(DURATION)+",asetpts=PTS-STARTPTS[bed]",
+          "[3:a]atrim=duration="+str(DURATION)+",asetpts=PTS-STARTPTS,apad=pad_dur="+str(DURATION)+",loudnorm=I=-16:TP=-1.5:LRA=7[voice]",
+          "[voice][bed]amix=inputs=2:duration=longest:dropout_transition=1:normalize=0,alimiter=limit=0.98,afade=t=in:st=0:d=0.5,afade=t=out:st="+str(max(0,DURATION-2))+":d=2[aout]"
+        ]
+    else:
+        filters += [
+          "[2:a]volume=0.9,loudnorm=I=-18:TP=-1.5:LRA=8,alimiter=limit=0.98,afade=t=in:st=0:d=1.0,afade=t=out:st="+str(max(0,DURATION-3))+":d=3[aout]"
+        ]
     cmd=["ffmpeg","-y",*inputs,"-filter_complex",";".join(filters),
       "-map","[vout]","-map","[aout]","-t",str(DURATION),"-r",str(FPS),
       "-c:v","libx264","-preset","veryfast","-pix_fmt","yuv420p","-s","1080x1920",
       "-c:a","aac","-b:a","160k","-movflags","+faststart",str(OUT)]
     run(cmd)
+    audio_note = "Human poetry recitation + quiet original instrumental." if voice is not None else "No suitable human recitation found; original instrumental only (no AI voice or unrelated song)."
     Path("poetry_demo.txt").write_text(f"Title: {title}\nMood: {MOOD}\nLanguage: {LANG}\nDuration: {DURATION}s\n\n"+
-      "\n".join(lines)+"\n\nBackground: "+BACKGROUND_CREDIT+"\nShort 2–3 line poetry displayed directly on background; no text box or watermark. Vocal song when available; otherwise original mood-matched instrumental.\n",encoding="utf-8")
+      "\n".join(lines)+"\n\nBackground: "+BACKGROUND_CREDIT+"\nShort 2–3 line poetry displayed directly on background; no text box or watermark.\nAudio: "+audio_note+"\n",encoding="utf-8")
 
 def main():
     print(f"Auto-selected: {MOOD} mood / {LANG} / {DURATION}s.")
@@ -845,15 +953,12 @@ def main():
         print("Pixabay/Pexels/Wikimedia did not return a usable photo; trying Unsplash.")
         bg=get_unsplash_image()
     if bg is None:
-        raise RuntimeError("No usable internet photo/video could be downloaded from Pexels, Pixabay, Wikimedia Commons, or Unsplash. Check API keys/network access and retry; no AI image will be generated.")
-    # Prefer a future Google Drive song library, then existing language-matched vocals.
-    music=get_google_drive_music()
-    if music is None:
-        music=get_online_music()
-    if music is None:
-        print("No suitable vocal song was available; using the system's mood-matched instrumental soundtrack.")
-        music=make_mood_music(title,lines)
-    render_video(title,lines,bg,music)
+        raise RuntimeError("No usable internet photo/video could be downloaded; no AI image will be generated.")
+
+    # Search for an actual human poetry recitation, not a song or synthetic narration.
+    voice=get_online_poetry_voice()
+    music=make_mood_music(title,lines)
+    render_video(title,lines,bg,music,voice)
     print(f"SUCCESS: {OUT} ({OUT.stat().st_size} bytes). Video generation completed.")
 
 if __name__=="__main__":
