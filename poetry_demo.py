@@ -1408,8 +1408,16 @@ def make_qawwali_video():
 def main():
     global DURATION
     if VIDEO_MODE == "qawwali":
-        make_qawwali_video()
-        return
+        try:
+            make_qawwali_video()
+            return
+        except RuntimeError as exc:
+            # Never substitute another singer for Nusrat. If no verified,
+            # permitted Nusrat recording is available, keep the daily pipeline
+            # alive by generating the normal poetry video instead.
+            if "No verified Nusrat Fateh Ali Khan Qawwali audio found" not in str(exc):
+                raise
+            print("Verified Nusrat audio is unavailable; safely falling back to a poetry video (no other Qawwal will be used).")
     print(f"Auto-selected: {MOOD} mood / {LANG} / {DURATION}s.")
     title,lines=make_poem()
     lines=lines[:3]
