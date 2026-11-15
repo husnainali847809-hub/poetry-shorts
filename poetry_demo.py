@@ -649,10 +649,17 @@ def get_online_poetry_voice(title, lines):
                 license_name = (meta.get("LicenseShortName") or {}).get("value", "")
                 license_text = normalize(license_name)
                 usage = normalize((meta.get("UsageTerms") or {}).get("value", ""))
+                restricted_terms = ("nc" in license_text.split() or "nd" in license_text.split()
+                                    or "noncommercial" in usage or "non commercial" in usage
+                                    or "no derivatives" in usage)
+                cc_by_allowed = (
+                    license_text.startswith("cc by ")
+                    and not restricted_terms
+                )
                 permitted = (
                     "cc0" in license_text or "public domain" in license_text
-                    or "cc by" in license_text or "cc by sa" in license_text
-                    or "creative commons attribution" in usage
+                    or cc_by_allowed
+                    or ("creative commons attribution" in usage and not restricted_terms)
                     or "public domain" in usage
                 )
                 if not permitted:
