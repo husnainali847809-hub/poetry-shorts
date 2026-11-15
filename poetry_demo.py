@@ -16,7 +16,8 @@ MODEL=os.getenv("OPENROUTER_MODEL","openrouter/free")
 MOOD=random.choice(["sad","romantic","motivational","deep","peaceful","rain","memories"])
 # Pakistan schedule: 09:00 and 18:00 Qawwali; 12:00, 15:00 and 21:00 poetry.
 SCHEDULE_CRON=os.getenv("SCHEDULE_CRON","").strip()
-VIDEO_MODE="qawwali" if SCHEDULE_CRON in ("0 4 * * *","0 13 * * *") else "poetry"
+VIDEO_MODE_OVERRIDE=os.getenv("VIDEO_MODE_OVERRIDE","").strip().lower()
+VIDEO_MODE=VIDEO_MODE_OVERRIDE if VIDEO_MODE_OVERRIDE in ("qawwali","poetry") else ("qawwali" if SCHEDULE_CRON in ("0 4 * * *","0 13 * * *") else "poetry")
 def scheduled_language():
     if VIDEO_MODE == "poetry" and os.getenv("GITHUB_EVENT_NAME") == "schedule":
         return "English" if SCHEDULE_CRON == "0 16 * * *" else "Urdu"
