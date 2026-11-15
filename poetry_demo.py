@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Standalone, manual-only cinematic poetry demo. Never publishes to Buffer."""
-import json, os, re, subprocess, sys, math, random, wave, struct
+import json, os, re, subprocess, sys, math, random, wave, struct, time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -1034,27 +1034,55 @@ def render_video(title,lines,bg,music,voice=None):
 def make_qawwali_video():
     """Use licensed original Qawwali audio over a separate mood-matched stock background video."""
     global BACKGROUND_CREDIT, DURATION, MOOD
-    headers={"User-Agent":"PulsenamaShorts/1.0 (Qawwali audio search)"}
+    # Identify the bot clearly and ask Commons politely; retry temporary rate limits.
+    headers={"User-Agent":"PulsenamaShorts/1.1 (Qawwali audio search; contact: project maintainer)"}
     api="https://commons.wikimedia.org/w/api.php"
+
+    def commons_get(url, *, params=None, stream=False, timeout=60):
+        last_error=None
+        for attempt in range(4):
+            try:
+                response=requests.get(url,params=params,headers=headers,stream=stream,timeout=timeout)
+                if response.status_code==429 or response.status_code in (500,502,503,504):
+                    retry_after=response.headers.get("Retry-After","")
+                    try: wait=min(60,int(retry_after))
+                    except (TypeError,ValueError): wait=8*(attempt+1)
+                    response.close()
+                    if attempt<3:
+                        print(f"Wikimedia temporarily rate-limited the request; retrying in {wait}s.")
+                        time.sleep(wait)
+                        continue
+                response.raise_for_status()
+                return response
+            except requests.RequestException as exc:
+                last_error=exc
+                if attempt<3:
+                    wait=8*(attempt+1)
+                    print(f"Wikimedia request failed; retrying in {wait}s: {exc}")
+                    time.sleep(wait)
+        raise last_error or RuntimeError("Wikimedia request failed")
 
     # Pick a visual mood for the background; never use the Qawwal's live footage.
     MOOD=random.choice(["qawwali","spiritual","peaceful"])
     candidates=[]
-    for query in ("Qawwali audio","Sufi Qawwali audio","Qawwali song"):
+    seen=set()
+    # Broader search phrases help Commons return more than one possible licensed recording.
+    for query in ("Qawwali","Sufi Qawwali","Nizamuddin Qawwali","Qawwali music recording","Sufi devotional music"):
         try:
-            r=requests.get(api,params={"action":"query","format":"json","generator":"search",
-                "gsrsearch":query+" filetype:video","gsrnamespace":6,"gsrlimit":30,
-                "prop":"imageinfo","iiprop":"url|mime|extmetadata"},headers=headers,timeout=35)
-            r.raise_for_status()
-            pages=(r.json().get("query") or {}).get("pages") or {}
+            with commons_get(api,params={"action":"query","format":"json","generator":"search",
+                "gsrsearch":query+" filetype:video","gsrnamespace":6,"gsrlimit":50,
+                "prop":"imageinfo","iiprop":"url|mime|extmetadata"},timeout=40) as response:
+                pages=(response.json().get("query") or {}).get("pages") or {}
             for page in pages.values():
                 info=(page.get("imageinfo") or [{}])[0]
                 meta=info.get("extmetadata") or {}
                 mime=info.get("mime","")
                 url=info.get("url","")
                 license_name=(meta.get("LicenseShortName") or {}).get("value","").lower()
-                if mime.startswith("video/") and url and any(x in license_name for x in
+                title=page.get("title","")
+                if title not in seen and mime.startswith("video/") and url and any(x in license_name for x in
                     ("cc0","public domain","cc by","cc-by","cc by-sa","cc-by-sa")):
+                    seen.add(title)
                     candidates.append((page,url,meta,license_name))
         except (requests.RequestException,ValueError,KeyError) as exc:
             print(f"Commons Qawwali audio search failed: {exc}")
@@ -1065,11 +1093,26 @@ def make_qawwali_video():
     for page,url,meta,license_name in candidates:
         source_path=WORK/"qawwali_audio_source"
         try:
-            with requests.get(url,stream=True,timeout=120,headers=headers) as response:
-                response.raise_for_status()
-                with source_path.open("wb") as out:
-                    for chunk in response.iter_content(1024*1024):
-                        if chunk: out.write(chunk)
+            # Try the API-provided original URL, then Commons' canonical file redirect.
+            file_title=page.get("title","").replace("File:","",1).replace(" ","_")
+            download_urls=[url]
+            if file_title:
+                from urllib.parse import quote
+                download_urls.append("https://commons.wikimedia.org/wiki/Special:Redirect/file/"+quote(file_title,safe="()!,._-"))
+            downloaded=False
+            for download_url in download_urls:
+                try:
+                    with commons_get(download_url,stream=True,timeout=120) as response:
+                        with source_path.open("wb") as out:
+                            for chunk in response.iter_content(1024*1024):
+                                if chunk: out.write(chunk)
+                    if source_path.exists() and source_path.stat().st_size>=100000:
+                        downloaded=True
+                        break
+                except (requests.RequestException,OSError) as download_error:
+                    print(f"Qawwali source download route failed; trying alternate route: {download_error}")
+            if not downloaded:
+                continue
             if source_path.stat().st_size<100000:
                 continue
             probe=subprocess.run(["ffprobe","-v","error","-show_entries","stream=codec_type",
