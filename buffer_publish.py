@@ -56,6 +56,8 @@ def build_caption(details):
             values[key.strip().lower()] = value.strip()
 
     title = values.get("title", "Pulsenama")
+    if "qawwali" in title.lower():
+        return "A soulful Qawwali performance.\n\n#Qawwali #SufiMusic #QawwaliShorts #Pulsenama"
     mood = values.get("mood", "peaceful").lower()
     language = values.get("language", "English").lower()
 
