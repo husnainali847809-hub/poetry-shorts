@@ -12,7 +12,7 @@ on:
           - poetry
         default: poetry
   schedule:
-    # Pakistan time (UTC+5): all five daily uploads generate poetry videos.
+    # Pakistan time (UTC+5): 9 AM, 12 PM, 6 PM Urdu; 3 PM Punjabi; 9 PM English.
     - cron: "0 4 * * *"
     - cron: "0 7 * * *"
     - cron: "0 10 * * *"
