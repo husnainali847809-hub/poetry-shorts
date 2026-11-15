@@ -1093,25 +1093,26 @@ def make_qawwali_video():
         except (OSError,ValueError,subprocess.SubprocessError) as exc:
             print(f"Skipping unreadable local Qawwali file {local_track.name}: {exc}")
 
-    # If no local Qawwali file exists, try the online Commons search as a fallback.
-    for query in ("Qawwali","Sufi Qawwali","Nizamuddin Qawwali","Qawwali music recording","Sufi devotional music"):
-        try:
-            with commons_get(api,params={"action":"query","format":"json","generator":"search",
-                "gsrsearch":query+" filetype:video","gsrnamespace":6,"gsrlimit":50,
-                "prop":"imageinfo","iiprop":"url|mime|extmetadata"},timeout=40) as response:
-                pages=(response.json().get("query") or {}).get("pages") or {}
-            for page in pages.values():
-                info=(page.get("imageinfo") or [{}])[0]
-                meta=info.get("extmetadata") or {}
-                mime=info.get("mime","")
-                url=info.get("url","")
-                title=page.get("title","")
-                # License filtering intentionally removed as requested.
-                if title not in seen and mime.startswith("video/") and url:
-                    seen.add(title)
-                    candidates.append((page,url,meta))
-        except (requests.RequestException,ValueError,KeyError) as exc:
-            print(f"Commons Qawwali audio search failed: {exc}")
+    # Only contact Commons when the project audio folder has no usable file.
+    if not audio_credit:
+        for query in ("Qawwali","Sufi Qawwali","Nizamuddin Qawwali","Qawwali music recording","Sufi devotional music"):
+            try:
+                with commons_get(api,params={"action":"query","format":"json","generator":"search",
+                    "gsrsearch":query+" filetype:video","gsrnamespace":6,"gsrlimit":50,
+                    "prop":"imageinfo","iiprop":"url|mime|extmetadata"},timeout=40) as response:
+                    pages=(response.json().get("query") or {}).get("pages") or {}
+                for page in pages.values():
+                    info=(page.get("imageinfo") or [{}])[0]
+                    meta=info.get("extmetadata") or {}
+                    mime=info.get("mime","")
+                    url=info.get("url","")
+                    title=page.get("title","")
+                    # License filtering intentionally removed as requested.
+                    if title not in seen and mime.startswith("video/") and url:
+                        seen.add(title)
+                        candidates.append((page,url,meta))
+            except (requests.RequestException,ValueError,KeyError) as exc:
+                print(f"Commons Qawwali audio search failed: {exc}")
 
     random.shuffle(candidates)
     for page,url,meta in (candidates if not audio_credit else []):
