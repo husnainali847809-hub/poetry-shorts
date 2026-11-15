@@ -10,9 +10,9 @@ on:
         options:
           - qawwali
           - poetry
-        default: qawwali
+        default: poetry
   schedule:
-    # Pakistan time (UTC+5): 09:00 Qawwali, 12:00 Poetry, 15:00 Poetry, 18:00 Qawwali, 21:00 Poetry.
+    # Pakistan time (UTC+5): all five daily uploads generate poetry videos.
     - cron: "0 4 * * *"
     - cron: "0 7 * * *"
     - cron: "0 10 * * *"
