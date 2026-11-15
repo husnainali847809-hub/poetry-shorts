@@ -14,16 +14,16 @@ PIXABAY=os.getenv("PIXABAY_API_KEY","").strip()
 MODEL=os.getenv("OPENROUTER_MODEL","openrouter/free")
 # Automatically choose creative settings; no workflow questions.
 MOOD=random.choice(["sad","romantic","motivational","deep","peaceful","rain","memories"])
-# Fixed daily language rotation for the four Pakistan-time publishing slots:
-# 09:00 Urdu, 13:00 English, 17:00 Urdu, 21:00 English.
-# This prevents all four videos from randomly ending up in the same language.
+# Five daily Pakistan-time publishing slots:
+# 09:00, 12:00, 15:00 and 18:00: Urdu/Punjabi; 21:00: English only.
+# Urdu/Punjabi are mixed randomly across the four daytime slots.
 def scheduled_language():
     if os.getenv("GITHUB_EVENT_NAME") == "schedule":
         hour=datetime.now(ZoneInfo("Asia/Karachi")).hour
-        slots=[9,13,17,21]
+        slots=[9,12,15,18,21]
         nearest=min(range(len(slots)),key=lambda i: min(abs(hour-slots[i]),24-abs(hour-slots[i])))
-        return ["Urdu","English","Urdu","English"][nearest]
-    return random.choice(["Urdu","English"])
+        return random.choice(["Urdu","Punjabi"]) if nearest < 4 else "English"
+    return random.choice(["Urdu","Punjabi"])
 
 LANG=scheduled_language()
 DURATION=random.choice([18,20,22,24])
@@ -45,6 +45,11 @@ def fallback_poem():
         "deep": ("Khamosh Sawal", ["Khamoshi mein bhi ek awaaz hoti hai", "Har raat ke baad nayi subah hoti hai"]),
         "peaceful": ("Sukoon Ka Lamha", ["Hawa se keh do zara dheere chale", "Aaj dil ko apne khayalon mein rehne de"]),
       },
+      "Punjabi": {
+        "sad": ("ادھوریاں یاداں", ["کجھ یاداں دل وچ وسدیاں رہندیاں نیں", "کجھ لوک دور ہو کے وی کول رہندے نیں"]),
+        "deep": ("دل دی گل", ["خاموشی وی کئی وار سب کجھ کہہ جاندی اے", "دل دی ہر گل لفظاں وچ نہیں آندی"]),
+        "peaceful": ("سکون دا ویلا", ["ہولی ہولی ہوا نال خواب سجاؤن دے", "اج دل نوں اپنے حال وچ مسکراؤن دے"]),
+      },
       "English": {
         "sad": ("After the Rain", ["Some memories still whisper in the rain", "Some goodbyes keep echoing again"]),
         "deep": ("Quiet Questions", ["The quiet holds what words cannot say", "Even the darkest night gives way"]),
@@ -64,7 +69,7 @@ def make_poem():
 Randomly choose ONE format: (A) a beautiful original 2-3 line poem, (B) a memorable quote, or (C) a famous, accurately attributed public-domain literary/poetry line.
 Use well-known poets/writers where appropriate, but NEVER invent a famous author or falsely attribute words. If unsure of exact wording or attribution, write an original line instead.
 Return ONLY valid JSON: {{"title":"short title","lines":["short line 1","short line 2","optional short attribution or third line"]}}.
-Use 2 or 3 short lines total, emotionally strong and easy to read on a phone. No paragraphs, no explanations, no decorative quote marks, no emojis. Keep every line concise enough to fit on a 1080x1920 video. For Urdu, write proper Urdu script; for English, write natural English."""
+Use 2 or 3 short lines total, emotionally strong and easy to read on a phone. No paragraphs, no explanations, no decorative quote marks, no emojis. Keep every line concise enough to fit on a 1080x1920 video. For Urdu, write proper Urdu script. For Punjabi, write natural Pakistani Punjabi in Shahmukhi script (not Hindi or Gurmukhi). For English, write natural English."""
     try:
         r=requests.post("https://openrouter.ai/api/v1/chat/completions",
           headers={"Authorization":f"Bearer {KEY}","Content-Type":"application/json"},
@@ -489,7 +494,7 @@ def generated_background():
 def get_font(size):
     # Use a real Latin font for English and an Arabic-script font for Urdu.
     # Pillow's tiny bitmap default font does not contain these glyphs and shows boxes.
-    if LANG.lower() == "urdu":
+    if LANG.lower() in ("urdu", "punjabi"):
         candidates = [
           "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
           "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
@@ -513,7 +518,7 @@ def text_page_png(title, lines):
     """Fit short poetry neatly inside the safe area, like the supplied reference reel."""
     layer=Image.new("RGBA",(W,H),(0,0,0,0))
     d=ImageDraw.Draw(layer)
-    rtl=LANG.lower()=="urdu"
+    rtl=LANG.lower() in ("urdu", "punjabi")
     max_width=int(W*0.84)
     visible=[str(line).strip() for line in lines[:3] if str(line).strip()]
 
@@ -836,8 +841,8 @@ def get_online_music():
     return None
 
 def get_local_music():
-    """Select a validated MP3 from the language-specific music folder."""
-    language_folder = "urdu" if LANG in ("Urdu", "Roman Urdu") else "english"
+    """Select a validated track only from music/urdu for every poetry language."""
+    language_folder = "urdu"
     folder = Path("music") / language_folder
     supported = {".mp3", ".m4a", ".wav", ".ogg", ".flac"}
     candidates = [p for p in folder.iterdir()
@@ -857,7 +862,7 @@ def get_local_music():
             print(f"Could not validate music file {path}: {exc}")
     raise RuntimeError(
         f"No usable music file found in {folder}. Upload an MP3 (or WAV/OGG/M4A/FLAC) "
-        f"for {LANG} poetry, then rerun the workflow."
+        f"for all poetry languages, then rerun the workflow."
     )
 
 
@@ -977,7 +982,7 @@ def render_video(title,lines,bg,music,voice=None):
       "-c:v","libx264","-preset","veryfast","-pix_fmt","yuv420p","-s","1080x1920",
       "-c:a","aac","-b:a","160k","-movflags","+faststart",str(OUT)]
     run(cmd)
-    audio_note = "Human poetry recitation + quiet local background music." if voice is not None else "No matching human recitation found; text poetry + local language-matched background music (no AI voice)."
+    audio_note = "Human poetry recitation + quiet local background music." if voice is not None else "No matching human recitation found; text poetry + music selected only from music/urdu (no AI voice)."
     Path("poetry_demo.txt").write_text(f"Title: {title}\nMood: {MOOD}\nLanguage: {LANG}\nDuration: {DURATION}s\n\n"+
       "\n".join(lines)+"\n\nBackground: "+BACKGROUND_CREDIT+"\nShort 2–3 line poetry displayed directly on background; no text box or watermark.\nAudio: "+audio_note+"\n",encoding="utf-8")
 
