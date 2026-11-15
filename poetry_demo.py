@@ -605,108 +605,122 @@ def get_font(size):
     raise RuntimeError("Required text font is missing; install DejaVu Sans and Noto Arabic fonts.")
 
 def poetry_text_color(bg):
-    """Choose a readable accent color by sampling the actual background behind the poem."""
-    sample=WORK/"poetry_color_sample.jpg"
+    """Choose a mood-led text color, adjusted for contrast against the existing background."""
+    palettes = {
+        "sad": ((185, 220, 255, 255), (28, 55, 92, 255)),
+        "rain": ((190, 225, 245, 255), (25, 58, 78, 255)),
+        "romantic": ((255, 190, 215, 255), (105, 35, 70, 255)),
+        "motivational": ((255, 215, 125, 255), (105, 65, 12, 255)),
+        "deep": ((225, 205, 255, 255), (62, 38, 92, 255)),
+        "peaceful": ((205, 245, 215, 255), (30, 78, 60, 255)),
+        "memories": ((255, 215, 175, 255), (105, 62, 35, 255)),
+    }
+    light, dark = palettes.get(MOOD, palettes["peaceful"])
+    sample = WORK / "poetry_color_sample.jpg"
     try:
-        if Path(bg).suffix.lower()==".mp4":
-            subprocess.run(
-                ["ffmpeg","-y","-ss","2","-i",str(bg),"-frames:v","1",
-                 "-vf","scale=360:640",str(sample)],
-                check=True,capture_output=True,
-            )
-            image=Image.open(sample).convert("RGB")
+        if Path(bg).suffix.lower() == ".mp4":
+            subprocess.run(["ffmpeg", "-y", "-ss", "2", "-i", str(bg),
+                            "-frames:v", "1", "-vf", "scale=360:640", str(sample)],
+                           check=True, capture_output=True)
+            image = Image.open(sample).convert("RGB")
         else:
-            image=Image.open(bg).convert("RGB").resize((360,640))
-        crop=image.crop((30,105,330,225)).resize((1,1))
-        red,green,blue=crop.getpixel((0,0))
-        brightness=0.2126*red+0.7152*green+0.0722*blue
-        light_colors=[(255,245,190,255),(190,245,255,255),(255,205,220,255),(220,255,205,255),(255,225,180,255)]
-        dark_colors=[(25,35,75,255),(75,25,55,255),(15,65,70,255),(65,35,95,255),(80,45,20,255)]
-        color=random.choice(dark_colors if brightness>150 else light_colors)
-        print(f"Poetry text color selected from background brightness ({brightness:.0f}): {color[:3]}.")
+            image = Image.open(bg).convert("RGB").resize((360, 640))
+        crop = image.crop((30, 105, 330, 225)).resize((1, 1))
+        red, green, blue = crop.getpixel((0, 0))
+        brightness = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        color = dark if brightness > 150 else light
+        print(f"Mood-led {MOOD} poetry color selected with background contrast.")
         return color
     except Exception as exc:
-        print(f"Could not sample background for text color ({exc}); using warm ivory.")
-        return (255,245,210,255)
+        print(f"Could not sample background for text contrast ({exc}); using mood color.")
+        return light
 
 
 def text_page_png(title, lines, bg):
-    """Render smaller, higher poetry with a contrast-aware color matched to the background."""
-    layer=Image.new("RGBA",(W,H),(0,0,0,0))
-    d=ImageDraw.Draw(layer)
-    rtl=LANG.lower() in ("urdu", "punjabi")
-    text_color=poetry_text_color(bg)
-    max_width=int(W*0.84)
-    visible=[str(line).strip() for line in lines[:3] if str(line).strip()]
+    """Render one of two reference-style text layouts; do not alter the background."""
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    rtl = LANG.lower() in ("urdu", "punjabi")
+    text_color = poetry_text_color(bg)
+    visible = [str(line).strip() for line in lines[:3] if str(line).strip()]
 
-    def measure(text,font):
+    # Alternate the two requested typography-only layouts on each generated video.
+    layout = random.choice(("center", "red_rule"))
+    print(f"Poetry typography layout: {layout} (background and video effects unchanged).")
+
+    def measure(text, font):
         try:
-            return d.textbbox((0,0),text,font=font,direction="rtl" if rtl else None)
+            return d.textbbox((0, 0), text, font=font,
+                              direction="rtl" if rtl else None)
         except Exception:
-            return d.textbbox((0,0),text,font=font)
+            return d.textbbox((0, 0), text, font=font)
 
-    def width(text,font):
-        b=measure(text,font)
-        return b[2]-b[0]
-
-    # Wrap long AI lines at word boundaries; never allow text beyond the frame.
-    wrapped=[]
-    for raw in visible:
-        words=raw.split()
-        current=""
-        for word in words:
-            candidate=(current+" "+word).strip()
-            test_font=get_font(46 if rtl else 44)
-            if current and width(candidate,test_font)>max_width:
+    def wrap_lines(max_width, base_size):
+        wrapped = []
+        for raw in visible:
+            current = ""
+            for word in raw.split():
+                candidate = (current + " " + word).strip()
+                test_font = get_font(base_size)
+                box = measure(candidate, test_font)
+                if current and box[2] - box[0] > max_width:
+                    wrapped.append(current)
+                    current = word
+                else:
+                    current = candidate
+            if current:
                 wrapped.append(current)
-                current=word
-            else:
-                current=candidate
-        if current:
-            wrapped.append(current)
-    visible=wrapped[:3] or [""]
+        return wrapped[:4] or [""]
 
-    # Find the largest font that fits every line and the full upper safe area.
-    chosen=None
-    for size in range(46 if rtl else 44, 27, -2):
-        font=get_font(size)
-        boxes=[measure(line,font) for line in visible]
-        heights=[max(1,b[3]-b[1]) for b in boxes]
-        gap=max(18,int(size*0.34))
-        total_h=sum(heights)+gap*max(0,len(heights)-1)
-        if max((b[2]-b[0] for b in boxes),default=0)<=max_width and total_h<=int(H*0.20):
-            chosen=(font,boxes,heights,gap,total_h)
+    # Screenshot-like compact typography: modest size, no panel, no decorative effects.
+    max_width = int(W * (0.72 if layout == "red_rule" else 0.82))
+    base_size = 43 if rtl else 40
+    visible = wrap_lines(max_width, base_size)
+    chosen = None
+    for size in range(base_size, 27, -2):
+        font = get_font(size)
+        boxes = [measure(line, font) for line in visible]
+        heights = [max(1, b[3] - b[1]) for b in boxes]
+        gap = max(13, int(size * 0.28))
+        total_h = sum(heights) + gap * max(0, len(heights) - 1)
+        if max((b[2] - b[0] for b in boxes), default=0) <= max_width and total_h <= int(H * 0.19):
+            chosen = (font, boxes, heights, gap, total_h)
             break
     if chosen is None:
-        font=get_font(28)
-        boxes=[measure(line,font) for line in visible]
-        heights=[max(1,b[3]-b[1]) for b in boxes]
-        gap=10
-        total_h=sum(heights)+gap*max(0,len(heights)-1)
+        font = get_font(28)
+        boxes = [measure(line, font) for line in visible]
+        heights = [max(1, b[3] - b[1]) for b in boxes]
+        gap, total_h = 10, sum(heights) + 10 * max(0, len(heights) - 1)
     else:
-        font,boxes,heights,gap,total_h=chosen
+        font, boxes, heights, gap, total_h = chosen
 
-    # Place the smaller poem higher, with comfortable space from the top edge.
-    y=max(int(H*0.21),int(H*0.26-total_h/2))
-    y=min(y,int(H*0.34-total_h))
-    for line,b,height in zip(visible,boxes,heights):
-        text_w=b[2]-b[0]
-        x=max(36,(W-text_w)//2)
-        x=min(x,W-36-text_w)
-        kw={"direction":"rtl"} if rtl else {}
-        # Soft shadow for contrast, without a text box or panel.
-        try:
-            d.text((x+2,y+3),line,font=font,fill=(0,0,0,175),
-                   stroke_width=3,stroke_fill=(0,0,0,135),**kw)
-            d.text((x,y),line,font=font,fill=text_color,
-                   stroke_width=2,stroke_fill=(12,12,18,210),**kw)
-        except Exception:
-            d.text((x,y),line,font=font,fill=(255,255,250,255))
-        y+=height+gap
-    path=WORK/"poetry_overlay.png"
+    if layout == "center":
+        # First reference: centered block, positioned in the upper-middle area.
+        y = int(H * 0.30 - total_h / 2)
+        for line, box, height in zip(visible, boxes, heights):
+            text_w = box[2] - box[0]
+            x = (W - text_w) // 2
+            kwargs = {"direction": "rtl"} if rtl else {}
+            d.text((x, y), line, font=font, fill=text_color, **kwargs)
+            y += height + gap
+    else:
+        # Second reference: text block beside a slim red vertical rule on the right.
+        rule_x = int(W * 0.88)
+        rule_top = int(H * 0.23)
+        rule_bottom = min(int(H * 0.43), rule_top + total_h + 26)
+        d.rounded_rectangle((rule_x, rule_top, rule_x + 5, rule_bottom),
+                            radius=2, fill=(220, 45, 55, 255))
+        y = rule_top + 5
+        for line, box, height in zip(visible, boxes, heights):
+            text_w = box[2] - box[0]
+            x = max(55, rule_x - 24 - text_w)
+            kwargs = {"direction": "rtl"} if rtl else {}
+            d.text((x, y), line, font=font, fill=text_color, **kwargs)
+            y += height + gap
+
+    path = WORK / "poetry_overlay.png"
     layer.save(path)
     return path
-
 
 
 def get_google_drive_music():
