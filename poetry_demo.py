@@ -14,16 +14,13 @@ PIXABAY=os.getenv("PIXABAY_API_KEY","").strip()
 MODEL=os.getenv("OPENROUTER_MODEL","openrouter/free")
 # Automatically choose creative settings; no workflow questions.
 MOOD=random.choice(["sad","romantic","motivational","deep","peaceful","rain","memories"])
-# Five daily Pakistan-time publishing slots:
-# 09:00, 12:00, 15:00 and 18:00: Urdu/Punjabi; 21:00: English only.
-# Urdu/Punjabi are mixed randomly across the four daytime slots.
+# Pakistan schedule: 09:00 and 18:00 Qawwali; 12:00, 15:00 and 21:00 poetry.
+SCHEDULE_CRON=os.getenv("SCHEDULE_CRON","").strip()
+VIDEO_MODE="qawwali" if SCHEDULE_CRON in ("0 4 * * *","0 13 * * *") else "poetry"
 def scheduled_language():
-    if os.getenv("GITHUB_EVENT_NAME") == "schedule":
-        hour=datetime.now(ZoneInfo("Asia/Karachi")).hour
-        slots=[9,12,15,18,21]
-        nearest=min(range(len(slots)),key=lambda i: min(abs(hour-slots[i]),24-abs(hour-slots[i])))
-        return random.choice(["Urdu","Punjabi"]) if nearest < 4 else "English"
-    return random.choice(["Urdu","Punjabi"])
+    if VIDEO_MODE == "poetry" and os.getenv("GITHUB_EVENT_NAME") == "schedule":
+        return "English" if SCHEDULE_CRON == "0 16 * * *" else "Urdu"
+    return "Urdu"
 
 LANG=scheduled_language()
 DURATION=random.choice([18,20,22,24])
@@ -1029,8 +1026,89 @@ def render_video(title,lines,bg,music,voice=None):
     Path("poetry_demo.txt").write_text(f"Title: {title}\nMood: {MOOD}\nLanguage: {LANG}\nDuration: {DURATION}s\n\n"+
       "\n".join(lines)+"\n\nBackground: "+BACKGROUND_CREDIT+"\nShort 2–3 line poetry displayed directly on background; no text box or watermark.\nAudio: "+audio_note+"\n",encoding="utf-8")
 
+
+
+def make_qawwali_video():
+    """Fetch a real Commons Qawwali performance, keeping its original sound."""
+    global BACKGROUND_CREDIT, DURATION
+    headers={"User-Agent":"PulsenamaShorts/1.0 (Qawwali search)"}
+    api="https://commons.wikimedia.org/w/api.php"
+    candidates=[]
+    for query in ("Qawwali live performance","Qawwali singer performance","Sufi Qawwali"):
+        try:
+            r=requests.get(api,params={"action":"query","format":"json","generator":"search",
+                "gsrsearch":query+" filetype:video","gsrnamespace":6,"gsrlimit":30,
+                "prop":"imageinfo","iiprop":"url|mime|extmetadata"},headers=headers,timeout=35)
+            r.raise_for_status()
+            pages=(r.json().get("query") or {}).get("pages") or {}
+            for page in pages.values():
+                info=(page.get("imageinfo") or [{}])[0]
+                meta=info.get("extmetadata") or {}
+                mime=info.get("mime","")
+                url=info.get("url","")
+                license_name=(meta.get("LicenseShortName") or {}).get("value","").lower()
+                artist=(meta.get("Artist") or {}).get("value","Unknown")
+                if mime.startswith("video/") and url and any(x in license_name for x in
+                    ("cc0","public domain","cc by","cc-by","cc by-sa","cc-by-sa")):
+                    candidates.append((page,url,artist,license_name))
+        except (requests.RequestException,ValueError,KeyError) as exc:
+            print(f"Commons Qawwali search failed: {exc}")
+    random.shuffle(candidates)
+    for page,url,artist,license_name in candidates:
+        path=WORK/"qawwali_source.webm"
+        try:
+            with requests.get(url,stream=True,timeout=120,headers=headers) as r:
+                r.raise_for_status()
+                with path.open("wb") as out:
+                    for chunk in r.iter_content(1024*1024):
+                        if chunk: out.write(chunk)
+            if path.stat().st_size<250000: continue
+            probe=subprocess.run(["ffprobe","-v","error","-show_entries","stream=codec_type","-of","json",str(path)],
+                capture_output=True,text=True,timeout=30,check=True)
+            streams=json.loads(probe.stdout).get("streams",[])
+            if not any(x.get("codec_type")=="video" for x in streams) or not any(x.get("codec_type")=="audio" for x in streams):
+                continue
+            title=page.get("title","Qawwali performance").replace("File:","",1)
+            page_url="https://commons.wikimedia.org/wiki/"+page.get("title","").replace(" ","_")
+            BACKGROUND_CREDIT=f"Wikimedia Commons: {title} | Creator: {artist} | License: {license_name} | {page_url}"
+            DURATION=24
+            title_img=Image.new("RGBA",(W,H),(0,0,0,0))
+            draw=ImageDraw.Draw(title_img)
+            font=get_font(46)
+            label="محفلِ قوالی"
+            try:
+                box=draw.textbbox((0,0),label,font=font,direction="rtl")
+                draw.text(((W-(box[2]-box[0]))//2,int(H*.22)),label,font=font,
+                    fill=(255,239,205,245),stroke_width=2,stroke_fill=(0,0,0,180),direction="rtl")
+            except Exception:
+                draw.text((W//3,int(H*.22)),label,font=font,fill=(255,239,205,245))
+            overlay=WORK/"qawwali_title.png"
+            title_img.save(overlay)
+            cmd=["ffmpeg","-y","-stream_loop","-1","-i",str(path),"-loop","1","-i",str(overlay),
+                "-filter_complex",
+                "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=24,trim=duration=24,setpts=PTS-STARTPTS[bg];"
+                "[1:v]format=rgba[title];[bg][title]overlay=0:0:shortest=1[v]",
+                "-map","[v]","-map","0:a:0","-t","24","-r","24","-c:v","libx264","-preset","veryfast",
+                "-pix_fmt","yuv420p","-c:a","aac","-b:a","160k","-af","loudnorm=I=-16:TP=-1.5:LRA=7",
+                "-movflags","+faststart",str(OUT)]
+            run(cmd)
+            Path("poetry_demo.txt").write_text(
+                "Title: Qawwali Shorts\nMood: Sufi Qawwali\nLanguage: Urdu\nDuration: 24s\n\n"
+                "Original Qawwali performance clip\n\nBackground: "+BACKGROUND_CREDIT+
+                "\nAudio: Original performance audio retained.\n",encoding="utf-8")
+            print(f"SUCCESS: Qawwali clip generated: {title}")
+            return
+        except (requests.RequestException,OSError,ValueError,subprocess.SubprocessError) as exc:
+            print(f"Skipping unusable Commons video: {exc}")
+            path.unlink(missing_ok=True)
+    raise RuntimeError("No Commons Qawwali performance with usable video and audio was found.")
+
+
 def main():
     global DURATION
+    if VIDEO_MODE == "qawwali":
+        make_qawwali_video()
+        return
     print(f"Auto-selected: {MOOD} mood / {LANG} / {DURATION}s.")
     title,lines=make_poem()
     lines=lines[:3]
