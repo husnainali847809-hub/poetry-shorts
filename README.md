@@ -15,9 +15,14 @@ Pulsenama automatically creates short vertical poetry videos in Urdu, Roman Urdu
 
 ## Automatic schedule
 
-GitHub Actions runs four times daily at approximately **09:00, 13:00, 17:00, and 21:00 Pakistan time**. Scheduled posts rotate languages: **09:00 Urdu, 13:00 English, 17:00 Urdu, and 21:00 English**. This guarantees Urdu poetry is included every day instead of relying on random language selection. GitHub may start scheduled jobs a little later than the exact cron time. You can also run the workflow manually from **Actions → Pulsenama AI Poetry Video Creator → Run workflow**.
+Five daily Pakistan-time slots (UTC+5):
+- 09:00 — Qawwali performance
+- 12:00 — Urdu poetry
+- 15:00 — Urdu poetry
+- 18:00 — Qawwali performance
+- 21:00 — English poetry
 
-Each successful run creates a public GitHub Release asset for the MP4 so Buffer can access the video URL.
+Qawwali slots search Wikimedia Commons for actual performance videos and retain original audio. If no usable Qawwali video is found, that run fails instead of substituting unrelated footage. GitHub may start scheduled jobs a little later than the exact cron time.
 
 ## Captions and hashtags
 
