@@ -39,6 +39,7 @@ jobs:
           OPENROUTER_MODEL: openrouter/free
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          SCHEDULE_CRON: ${{ github.event.schedule }}
         run: python poetry_demo.py
       - name: Host video publicly for Buffer
         id: video-host
