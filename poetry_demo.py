@@ -514,11 +514,38 @@ def get_font(size):
                 pass
     raise RuntimeError("Required text font is missing; install DejaVu Sans and Noto Arabic fonts.")
 
-def text_page_png(title, lines):
-    """Fit short poetry neatly inside the safe area, like the supplied reference reel."""
+def poetry_text_color(bg):
+    """Choose a readable accent color by sampling the actual background behind the poem."""
+    sample=WORK/"poetry_color_sample.jpg"
+    try:
+        if Path(bg).suffix.lower()==".mp4":
+            subprocess.run(
+                ["ffmpeg","-y","-ss","2","-i",str(bg),"-frames:v","1",
+                 "-vf","scale=360:640",str(sample)],
+                check=True,capture_output=True,
+            )
+            image=Image.open(sample).convert("RGB")
+        else:
+            image=Image.open(bg).convert("RGB").resize((360,640))
+        crop=image.crop((30,105,330,225)).resize((1,1))
+        red,green,blue=crop.getpixel((0,0))
+        brightness=0.2126*red+0.7152*green+0.0722*blue
+        light_colors=[(255,245,190,255),(190,245,255,255),(255,205,220,255),(220,255,205,255),(255,225,180,255)]
+        dark_colors=[(25,35,75,255),(75,25,55,255),(15,65,70,255),(65,35,95,255),(80,45,20,255)]
+        color=random.choice(dark_colors if brightness>150 else light_colors)
+        print(f"Poetry text color selected from background brightness ({brightness:.0f}): {color[:3]}.")
+        return color
+    except Exception as exc:
+        print(f"Could not sample background for text color ({exc}); using warm ivory.")
+        return (255,245,210,255)
+
+
+def text_page_png(title, lines, bg):
+    """Render smaller, higher poetry with a contrast-aware color matched to the background."""
     layer=Image.new("RGBA",(W,H),(0,0,0,0))
     d=ImageDraw.Draw(layer)
     rtl=LANG.lower() in ("urdu", "punjabi")
+    text_color=poetry_text_color(bg)
     max_width=int(W*0.84)
     visible=[str(line).strip() for line in lines[:3] if str(line).strip()]
 
@@ -551,17 +578,17 @@ def text_page_png(title, lines):
 
     # Find the largest font that fits every line and the full upper safe area.
     chosen=None
-    for size in range(62 if rtl else 56, 35, -2):
+    for size in range(52 if rtl else 48, 29, -2):
         font=get_font(size)
         boxes=[measure(line,font) for line in visible]
         heights=[max(1,b[3]-b[1]) for b in boxes]
         gap=max(18,int(size*0.34))
         total_h=sum(heights)+gap*max(0,len(heights)-1)
-        if max((b[2]-b[0] for b in boxes),default=0)<=max_width and total_h<=int(H*0.25):
+        if max((b[2]-b[0] for b in boxes),default=0)<=max_width and total_h<=int(H*0.20):
             chosen=(font,boxes,heights,gap,total_h)
             break
     if chosen is None:
-        font=get_font(36)
+        font=get_font(30)
         boxes=[measure(line,font) for line in visible]
         heights=[max(1,b[3]-b[1]) for b in boxes]
         gap=12
@@ -569,9 +596,9 @@ def text_page_png(title, lines):
     else:
         font,boxes,heights,gap,total_h=chosen
 
-    # Keep text in the upper third, safely away from every frame edge.
-    y=max(int(H*0.25),int(H*0.34-total_h/2))
-    y=min(y,int(H*0.43-total_h))
+    # Place the smaller poem higher, with comfortable space from the top edge.
+    y=max(int(H*0.17),int(H*0.25-total_h/2))
+    y=min(y,int(H*0.34-total_h))
     for line,b,height in zip(visible,boxes,heights):
         text_w=b[2]-b[0]
         x=max(36,(W-text_w)//2)
@@ -581,8 +608,8 @@ def text_page_png(title, lines):
         try:
             d.text((x+2,y+3),line,font=font,fill=(0,0,0,175),
                    stroke_width=3,stroke_fill=(0,0,0,135),**kw)
-            d.text((x,y),line,font=font,fill=(255,255,250,255),
-                   stroke_width=1,stroke_fill=(25,22,25,190),**kw)
+            d.text((x,y),line,font=font,fill=text_color,
+                   stroke_width=2,stroke_fill=(12,12,18,210),**kw)
         except Exception:
             d.text((x,y),line,font=font,fill=(255,255,250,255))
         y+=height+gap
@@ -969,7 +996,7 @@ def make_mood_music(title, lines):
 
 def render_video(title,lines,bg,music,voice=None):
     # If no matching human recitation exists, keep the earlier text-poetry + music format.
-    page=text_page_png(title,lines)
+    page=text_page_png(title,lines,bg)
     if bg.suffix.lower()==".mp4":
         inputs=["-stream_loop","-1","-i",str(bg),"-loop","1","-i",str(page)]
     else:
