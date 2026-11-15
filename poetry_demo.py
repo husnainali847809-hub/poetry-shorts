@@ -14,13 +14,17 @@ PIXABAY=os.getenv("PIXABAY_API_KEY","").strip()
 MODEL=os.getenv("OPENROUTER_MODEL","openrouter/free")
 # Automatically choose creative settings; no workflow questions.
 MOOD=random.choice(["sad","romantic","motivational","deep","peaceful","rain","memories"])
-# Pakistan schedule: all five daily slots generate poetry videos.
+# Pakistan schedule: 9 AM, 12 PM, 6 PM Urdu; 3 PM Punjabi; 9 PM English.
 SCHEDULE_CRON=os.getenv("SCHEDULE_CRON","").strip()
 VIDEO_MODE_OVERRIDE=os.getenv("VIDEO_MODE_OVERRIDE","").strip().lower()
 VIDEO_MODE=VIDEO_MODE_OVERRIDE if VIDEO_MODE_OVERRIDE in ("qawwali","poetry") else "poetry"
 def scheduled_language():
     if VIDEO_MODE == "poetry" and os.getenv("GITHUB_EVENT_NAME") == "schedule":
-        return "English" if SCHEDULE_CRON == "0 16 * * *" else "Urdu"
+        if SCHEDULE_CRON == "0 10 * * *":
+            return "Punjabi"
+        if SCHEDULE_CRON == "0 16 * * *":
+            return "English"
+        return "Urdu"
     return "Urdu"
 
 LANG=scheduled_language()
