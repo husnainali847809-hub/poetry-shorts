@@ -840,30 +840,46 @@ def get_online_music():
         print(f"Jamendo language-specific song search failed: {exc}")
     return None
 
-def get_local_music():
-    """Select a validated track only from music/urdu for every poetry language."""
+def get_audio_duration(path):
+    """Read the exact media duration in seconds using ffprobe."""
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+        check=True, capture_output=True, text=True,
+    )
+    duration = float(result.stdout.strip())
+    if not math.isfinite(duration) or duration <= 0:
+        raise RuntimeError(f"Could not determine a valid audio duration for {path}.")
+    return duration
+
+
+def get_local_music(target_duration=None):
+    """Choose valid music only from music/urdu; match the voice length when supplied."""
     language_folder = "urdu"
     folder = Path("music") / language_folder
     supported = {".mp3", ".m4a", ".wav", ".ogg", ".flac"}
     candidates = [p for p in folder.iterdir()
                   if p.is_file() and p.suffix.lower() in supported and p.stat().st_size > 10000] if folder.exists() else []
-    random.shuffle(candidates)
+    valid = []
     for path in candidates:
         try:
-            probe = subprocess.run(
-                ["ffmpeg", "-v", "error", "-i", str(path), "-t", "2", "-f", "null", "-"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-            )
-            if probe.returncode == 0:
-                print(f"Using local {language_folder} music: {path.name}")
-                return path
-            print(f"Skipping unreadable music file: {path}")
-        except (OSError, subprocess.SubprocessError) as exc:
-            print(f"Could not validate music file {path}: {exc}")
-    raise RuntimeError(
-        f"No usable music file found in {folder}. Upload an MP3 (or WAV/OGG/M4A/FLAC) "
-        f"for all poetry languages, then rerun the workflow."
-    )
+            duration = get_audio_duration(path)
+            valid.append((path, duration))
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            print(f"Skipping unreadable music file {path}: {exc}")
+    if not valid:
+        raise RuntimeError(
+            f"No usable music file found in {folder}. Upload an MP3 (or WAV/OGG/M4A/FLAC) "
+            f"and rerun the workflow."
+        )
+    if target_duration is None:
+        path, duration = random.choice(valid)
+    else:
+        path, duration = min(valid, key=lambda item: abs(item[1] - target_duration))
+    print(f"Using local {language_folder} music: {path.name} ({duration:.2f}s)")
+    if target_duration is not None:
+        print(f"Matched music to human voice duration: {target_duration:.2f}s.")
+    return path
 
 
 def make_mood_music(title, lines):
@@ -1010,7 +1026,16 @@ def main():
     voice=get_online_poetry_voice(title,lines)
     if voice is None:
         print("No matching human recitation found; using text poetry + local background music fallback.")
-    music=get_local_music()
+    global DURATION
+    if voice is not None:
+        voice_duration = get_audio_duration(voice)
+        music = get_local_music(voice_duration)
+        DURATION = voice_duration
+        print(f"Video duration follows original poetry voice: {DURATION:.2f}s.")
+    else:
+        music = get_local_music()
+        DURATION = get_audio_duration(music)
+        print(f"Text-poetry video duration follows selected music: {DURATION:.2f}s.")
     render_video(title,lines,bg,music,voice)
     print(f"SUCCESS: {OUT} ({OUT.stat().st_size} bytes). Video generation completed.")
 
