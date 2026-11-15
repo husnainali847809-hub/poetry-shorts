@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Standalone, manual-only cinematic poetry demo. Never publishes to Buffer."""
 import json, os, re, subprocess, sys, math, random, wave, struct, time
+# Force poetry-only operation; ignore any stale Qawwali mode environment setting.
+os.environ.pop("VIDEO_MODE_OVERRIDE", None)
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -16,7 +18,7 @@ MODEL=os.getenv("OPENROUTER_MODEL","openrouter/free")
 MOOD=random.choice(["sad","romantic","motivational","deep","peaceful","rain","memories"])
 # Pakistan schedule: 9 AM, 12 PM, 6 PM Urdu; 3 PM Punjabi; 9 PM English.
 SCHEDULE_CRON=os.getenv("SCHEDULE_CRON","").strip()
-# Poetry-only mode: Qawwali generation is disabled.
+# Poetry-only mode: Qawwali generation is removed and disabled.
 def scheduled_language():
     if os.getenv("GITHUB_EVENT_NAME") == "schedule":
         if SCHEDULE_CRON == "0 10 * * *":
@@ -113,7 +115,6 @@ def mood_search_terms():
       "peaceful":["misty lake forest morning photography","calm turquoise ocean aerial landscape photo","sunlight through green forest nature photography"],
       "rain":["rainy city street reflections cinematic photography","misty mountain rain landscape photography","rain drops on glass blurred city lights photo"],
       "memories":["old European street golden hour photography","vintage countryside road sunset photo","nostalgic seaside town film photography"],
-      "qawwali":["Qawwali mehfil harmonium tabla musicians closeup cinematic","Sufi dargah shrine illuminated courtyard night cinematic video","Sufi sama devotional gathering hands clapping tabla harmonium","Nizamuddin dargah evening lights cinematic moving video","traditional South Asian Sufi music instruments tabla harmonium cinematic"],
       "spiritual":["Sufi dargah illuminated courtyard night cinematic video","Sufi sama devotional gathering architecture","traditional South Asian shrine courtyard evening lights"],
     }
     return random.choice(choices.get(MOOD, ["cinematic nature landscape photography","fine art mountain landscape photo"]))
@@ -213,7 +214,6 @@ def get_archive_video():
     global BACKGROUND_CREDIT
     # Keep visuals generic and separate from the Qawwal/audio performance.
     visual_terms = {
-        "qawwali": ["qawwali mehfil", "Sufi dargah courtyard", "Sufi shrine night lights", "tabla harmonium musicians", "Sufi sama gathering"],
         "spiritual": ["Sufi shrine courtyard", "dargah night lights", "Islamic architecture courtyard", "Sufi devotional gathering"],
         "peaceful": ["Sufi shrine courtyard", "dargah evening lights", "Islamic architecture"]
     }
@@ -1133,275 +1133,6 @@ def render_video(title,lines,bg,music,voice=None):
       "\n".join(lines)+"\n\nBackground: "+BACKGROUND_CREDIT+"\nShort 2–3 line poetry displayed directly on background; no text box or watermark.\nAudio: "+audio_note+"\n",encoding="utf-8")
 
 
-
-
-def transcribe_qawwali_words(audio_path):
-    """Create timed lyric captions from the actual Qawwali audio using Whisper."""
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError as exc:
-        raise RuntimeError("Whisper transcription dependency is missing; install faster-whisper.") from exc
-
-    model_name = os.getenv("WHISPER_MODEL", "small")
-    print(f"Transcribing Qawwali lyrics with Whisper ({model_name}); word-level timestamps enabled.")
-    model = WhisperModel(model_name, device="cpu", compute_type="int8")
-    segments, info = model.transcribe(
-        str(audio_path), language="ur", task="transcribe",
-        initial_prompt="یہ اردو قوالی کے بول ہیں۔ صرف اردو رسم الخط میں لکھیں، ہندی یا دیوناگری رسم الخط استعمال نہ کریں۔",
-        beam_size=5, word_timestamps=True,
-        vad_filter=True, condition_on_previous_text=True
-    )
-    words = []
-    plain = []
-    for segment in segments:
-        text = (segment.text or "").strip()
-        if text:
-            plain.append(text)
-        for item in (segment.words or []):
-            token = (item.word or "").strip()
-            if token and item.end > item.start:
-                words.append((float(item.start), float(item.end), token))
-
-    if not words:
-        raise RuntimeError("Whisper could not detect Qawwali lyrics; refusing to create a lyric-free Qawwali reel.")
-
-    # Never publish Devanagari/Hindi-script captions; fail rather than display the wrong script.
-    full_transcript = " ".join(plain)
-    if any("\\u0900" <= char <= "\\u097f" for char in full_transcript):
-        raise RuntimeError("Whisper returned Devanagari/Hindi text despite Urdu mode. Refusing to publish incorrect-script captions; use a clearer Urdu recording.")
-
-    # Group 2–5 spoken words per caption. Keep each caption synchronized to the singer.
-    groups = []
-    current = []
-    start = end = 0.0
-    for ws, we, token in words:
-        if not current:
-            start = ws
-        if current and (len(current) >= 4 or ws - end > 0.55):
-            groups.append((start, end, " ".join(current)))
-            current = []
-            start = ws
-        current.append(token)
-        end = we
-    if current:
-        groups.append((start, end, " ".join(current)))
-
-    def stamp(seconds):
-        ms = max(0, int(round(seconds * 1000)))
-        h, ms = divmod(ms, 3600000)
-        m, ms = divmod(ms, 60000)
-        s, ms = divmod(ms, 1000)
-        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-    # Trim the instrumental lead-in so the reel begins on the first detected sung word.
-    first_word_start = words[0][0]
-    srt = WORK / "qawwali_lyrics.srt"
-    with srt.open("w", encoding="utf-8") as handle:
-        for index, (begin, finish, caption) in enumerate(groups, 1):
-            begin=max(0.0,begin-first_word_start)
-            finish=max(begin+0.08,finish-first_word_start)
-            handle.write(f"{index}\n{stamp(begin)} --> {stamp(finish)}\n{caption}\n\n")
-    transcript = WORK / "qawwali_transcript.txt"
-    transcript.write_text("\n".join(plain), encoding="utf-8")
-    print(f"Transcription complete: {len(words)} words in {len(groups)} timed lyric captions; detected language={info.language}; trimming {first_word_start:.2f}s instrumental lead-in.")
-    return srt, transcript, info.language, first_word_start
-
-def make_qawwali_video():
-    """Use Qawwali audio over a separate mood-matched stock background video."""
-    global BACKGROUND_CREDIT, DURATION, MOOD
-    # Identify the bot clearly and ask Commons politely; retry temporary rate limits.
-    headers={"User-Agent":"PulsenamaShorts/1.1 (Qawwali audio search; contact: project maintainer)"}
-    api="https://commons.wikimedia.org/w/api.php"
-
-    def commons_get(url, *, params=None, stream=False, timeout=60):
-        last_error=None
-        for attempt in range(4):
-            try:
-                response=requests.get(url,params=params,headers=headers,stream=stream,timeout=timeout)
-                if response.status_code==429 or response.status_code in (500,502,503,504):
-                    retry_after=response.headers.get("Retry-After","")
-                    try: wait=min(60,int(retry_after))
-                    except (TypeError,ValueError): wait=8*(attempt+1)
-                    response.close()
-                    if attempt<3:
-                        print(f"Wikimedia temporarily rate-limited the request; retrying in {wait}s.")
-                        time.sleep(wait)
-                        continue
-                response.raise_for_status()
-                return response
-            except requests.RequestException as exc:
-                last_error=exc
-                if attempt<3:
-                    wait=8*(attempt+1)
-                    print(f"Wikimedia request failed; retrying in {wait}s: {exc}")
-                    time.sleep(wait)
-        raise last_error or RuntimeError("Wikimedia request failed")
-
-    # Pick a visual mood for the background; never use the Qawwal's live footage.
-    MOOD="qawwali"  # Keep every background provider on Qawwali/Sufi-specific search terms.
-    candidates=[]
-    seen=set()
-    audio_path=WORK/"qawwali_original_audio.mp3"
-    audio_credit=None
-
-    # Prefer audio files supplied by the project owner. No automatic license filtering.
-    local_folder=Path("qawwali")
-    supported_audio={".mp3",".m4a",".wav",".ogg",".flac"}
-    local_tracks=[p for p in local_folder.iterdir()
-                  if p.is_file() and p.suffix.lower() in supported_audio and p.stat().st_size>30000] if local_folder.exists() else []
-    random.shuffle(local_tracks)
-    for local_track in local_tracks:
-        try:
-            probe=subprocess.run(["ffprobe","-v","error","-show_entries","stream=codec_type",
-                "-of","json",str(local_track)],capture_output=True,text=True,timeout=30,check=True)
-            streams=json.loads(probe.stdout).get("streams",[])
-            if not any(x.get("codec_type")=="audio" for x in streams):
-                print(f"Skipping local file without an audio stream: {local_track.name}")
-                continue
-            # Do not silently substitute an unrelated Qawwal: require Nusrat's name
-            # in the filename or embedded audio metadata.
-            tag_probe=subprocess.run(["ffprobe","-v","error","-show_entries","format_tags=artist,title,album",
-                "-of","json",str(local_track)],capture_output=True,text=True,timeout=30,check=True)
-            tags=(json.loads(tag_probe.stdout).get("format") or {}).get("tags") or {}
-            identity=" ".join([local_track.stem]+[str(v) for v in tags.values()]).lower()
-            if "nusrat" not in identity and "fateh ali khan" not in identity:
-                print(f"Skipping non-Nusrat Qawwali audio: {local_track.name}")
-                continue
-            extract=subprocess.run(["ffmpeg","-y","-i",str(local_track),"-vn","-ac","2",
-                "-ar","44100","-codec:a","libmp3lame","-b:a","192k",str(audio_path)],
-                capture_output=True,text=True,timeout=120)
-            if extract.returncode==0 and audio_path.exists() and audio_path.stat().st_size>30000:
-                audio_credit=f"Project audio folder: {local_track.name}"
-                print(f"Using Qawwali audio supplied in {local_folder}/: {local_track.name}")
-                break
-        except (OSError,ValueError,subprocess.SubprocessError) as exc:
-            print(f"Skipping unreadable local Qawwali file {local_track.name}: {exc}")
-
-    # Only contact Commons when the project audio folder has no usable file.
-    if not audio_credit:
-        for query in ("Qawwali","Sufi Qawwali","Nizamuddin Qawwali","Qawwali music recording","Sufi devotional music"):
-            try:
-                with commons_get(api,params={"action":"query","format":"json","generator":"search",
-                    "gsrsearch":query+" filetype:video","gsrnamespace":6,"gsrlimit":50,
-                    "prop":"imageinfo","iiprop":"url|mime|extmetadata"},timeout=40) as response:
-                    pages=(response.json().get("query") or {}).get("pages") or {}
-                for page in pages.values():
-                    info=(page.get("imageinfo") or [{}])[0]
-                    meta=info.get("extmetadata") or {}
-                    mime=info.get("mime","")
-                    url=info.get("url","")
-                    title=page.get("title","")
-                    artist_text=(meta.get("Artist") or {}).get("value","")
-                    description_text=(meta.get("ImageDescription") or {}).get("value","")
-                    identity=(title+" "+artist_text+" "+description_text).lower()
-                    # Only accept a source explicitly identified as Nusrat Fateh Ali Khan.
-                    if ("nusrat" in identity or "fateh ali khan" in identity) and title not in seen and mime.startswith("video/") and url:
-                        seen.add(title)
-                        candidates.append((page,url,meta))
-            except (requests.RequestException,ValueError,KeyError) as exc:
-                print(f"Commons Qawwali audio search failed: {exc}")
-
-    random.shuffle(candidates)
-    for page,url,meta in (candidates if not audio_credit else []):
-        source_path=WORK/"qawwali_audio_source"
-        try:
-            # Try the API-provided original URL, then Commons' canonical file redirect.
-            file_title=page.get("title","").replace("File:","",1).replace(" ","_")
-            download_urls=[url]
-            if file_title:
-                from urllib.parse import quote
-                download_urls.append("https://commons.wikimedia.org/wiki/Special:Redirect/file/"+quote(file_title,safe="()!,._-"))
-            downloaded=False
-            for download_url in download_urls:
-                try:
-                    with commons_get(download_url,stream=True,timeout=120) as response:
-                        with source_path.open("wb") as out:
-                            for chunk in response.iter_content(1024*1024):
-                                if chunk: out.write(chunk)
-                    if source_path.exists() and source_path.stat().st_size>=100000:
-                        downloaded=True
-                        break
-                except (requests.RequestException,OSError) as download_error:
-                    print(f"Qawwali source download route failed; trying alternate route: {download_error}")
-            if not downloaded:
-                continue
-            if source_path.stat().st_size<100000:
-                continue
-            probe=subprocess.run(["ffprobe","-v","error","-show_entries","stream=codec_type",
-                "-of","json",str(source_path)],capture_output=True,text=True,timeout=30,check=True)
-            streams=json.loads(probe.stdout).get("streams",[])
-            if not any(x.get("codec_type")=="audio" for x in streams):
-                continue
-            extract=subprocess.run(["ffmpeg","-y","-i",str(source_path),"-vn","-ac","2",
-                "-ar","44100","-codec:a","libmp3lame","-b:a","192k",str(audio_path)],
-                capture_output=True,text=True,timeout=120)
-            if extract.returncode!=0 or not audio_path.exists() or audio_path.stat().st_size<30000:
-                audio_path.unlink(missing_ok=True)
-                continue
-            title=page.get("title","Qawwali audio").replace("File:","",1)
-            page_url="https://commons.wikimedia.org/wiki/"+page.get("title","").replace(" ","_")
-            artist=(meta.get("Artist") or {}).get("value","Unknown")
-            audio_credit=f"Wikimedia Commons: {title} | Creator: {artist} | {page_url}"
-            print(f"Using original Qawwali audio from online source: {title}")
-            break
-        except (requests.RequestException,OSError,ValueError,subprocess.SubprocessError) as exc:
-            print(f"Skipping unusable Qawwali audio source: {exc}")
-            source_path.unlink(missing_ok=True)
-            audio_path.unlink(missing_ok=True)
-
-    if not audio_credit:
-        raise RuntimeError("No verified Nusrat Fateh Ali Khan Qawwali audio found. Add a Nusrat recording you have permission to use to qawwali/ (include 'Nusrat' in its filename or audio metadata), then rerun. The system will not substitute a random Qawwal.")
-
-    # Search a separate moving stock clip to visually match the Qawwali mood.
-    bg=get_pexels_video()
-    if bg is None:
-        bg=get_pixabay_video()
-    if bg is None:
-        print("Pexels/Pixabay did not return a usable clip; trying a no-key Internet Archive video source.")
-        bg=get_archive_video()
-    if bg is None:
-        raise RuntimeError("No usable moving background video was found from Pexels, Pixabay, or Internet Archive. Check network access and rerun; no still image or Qawwal performance footage will be substituted.")
-
-    DURATION=min(60.0,get_audio_duration(audio_path))
-    if DURATION<12:
-        raise RuntimeError(f"Qawwali audio is too short for a Short ({DURATION:.1f}s).")
-
-    # Actual spoken lyrics are transcribed and timed; no invented lyric text is shown.
-    subtitle_file, transcript_file, detected_language, first_word_start = transcribe_qawwali_words(audio_path)
-    DURATION = max(1.0, DURATION-first_word_start)
-    subtitle_path = str(subtitle_file.resolve()).replace("\\", "\\\\").replace(":", "\\:")
-    subtitle_filter = (
-        "subtitles=filename='" + subtitle_path + "':charenc=UTF-8:"
-        "force_style='FontName=Noto Naskh Arabic,FontSize=22,PrimaryColour=&H00FFFFFF,"
-        "OutlineColour=&H00101010,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=230'"
-    )
-    video_filter = (
-        "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-        "setsar=1,fps=24,trim=duration=" + str(DURATION) +
-        ",setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.8,fade=t=out:st=" +
-        str(max(0,DURATION-1.2)) + ":d=1.2," + subtitle_filter + "[v]"
-    )
-    audio_filter = (
-        "[1:a]atrim=duration=" + str(DURATION) +
-        ",asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=7,"
-        "afade=t=in:st=0:d=0.5,afade=t=out:st=" +
-        str(max(0,DURATION-1.5)) + ":d=1.5[a]"
-    )
-    cmd=["ffmpeg","-y","-stream_loop","-1","-i",str(bg),"-ss",f"{first_word_start:.3f}","-i",str(audio_path),
-        "-filter_complex",video_filter+";"+audio_filter,
-        "-map","[v]","-map","[a]","-t",str(DURATION),"-r","24","-c:v","libx264",
-        "-preset","veryfast","-pix_fmt","yuv420p","-c:a","aac","-b:a","160k",
-        "-movflags","+faststart",str(OUT)]
-    run(cmd)
-    Path("poetry_demo.txt").write_text(
-        "Title: Qawwali Shorts\nMood: "+MOOD+"\nLanguage: "+str(detected_language)+
-        "\nDuration: "+str(round(DURATION,2))+"s\n\n"
-        "Timed word-level lyrics are burned into the video from the actual Qawwali audio.\n"
-        "Transcript: "+str(transcript_file)+"\n"
-        "Moving stock background video (random mood-matched selection).\nBackground: "+BACKGROUND_CREDIT+
-        "\nQawwali audio: "+audio_credit+"\n",
-        encoding="utf-8")
-    print(f"SUCCESS: Qawwali lyrics reel with synchronized captions: {OUT} ({OUT.stat().st_size} bytes).")
 
 
 def main():
