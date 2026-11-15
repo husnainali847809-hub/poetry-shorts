@@ -1031,6 +1031,67 @@ def render_video(title,lines,bg,music,voice=None):
 
 
 
+
+def transcribe_qawwali_words(audio_path):
+    """Create timed lyric captions from the actual Qawwali audio using Whisper."""
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError as exc:
+        raise RuntimeError("Whisper transcription dependency is missing; install faster-whisper.") from exc
+
+    model_name = os.getenv("WHISPER_MODEL", "small")
+    print(f"Transcribing Qawwali lyrics with Whisper ({model_name}); word-level timestamps enabled.")
+    model = WhisperModel(model_name, device="cpu", compute_type="int8")
+    segments, info = model.transcribe(
+        str(audio_path), beam_size=3, word_timestamps=True,
+        vad_filter=True, condition_on_previous_text=True
+    )
+    words = []
+    plain = []
+    for segment in segments:
+        text = (segment.text or "").strip()
+        if text:
+            plain.append(text)
+        for item in (segment.words or []):
+            token = (item.word or "").strip()
+            if token and item.end > item.start:
+                words.append((float(item.start), float(item.end), token))
+
+    if not words:
+        raise RuntimeError("Whisper could not detect Qawwali lyrics; refusing to create a lyric-free Qawwali reel.")
+
+    # Group 2–5 spoken words per caption. Keep each caption synchronized to the singer.
+    groups = []
+    current = []
+    start = end = 0.0
+    for ws, we, token in words:
+        if not current:
+            start = ws
+        if current and (len(current) >= 4 or ws - end > 0.55):
+            groups.append((start, end, " ".join(current)))
+            current = []
+            start = ws
+        current.append(token)
+        end = we
+    if current:
+        groups.append((start, end, " ".join(current)))
+
+    def stamp(seconds):
+        ms = max(0, int(round(seconds * 1000)))
+        h, ms = divmod(ms, 3600000)
+        m, ms = divmod(ms, 60000)
+        s, ms = divmod(ms, 1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    srt = WORK / "qawwali_lyrics.srt"
+    with srt.open("w", encoding="utf-8") as handle:
+        for index, (begin, finish, caption) in enumerate(groups, 1):
+            handle.write(f"{index}\n{stamp(begin)} --> {stamp(finish)}\n{caption}\n\n")
+    transcript = WORK / "qawwali_transcript.txt"
+    transcript.write_text("\n".join(plain), encoding="utf-8")
+    print(f"Transcription complete: {len(words)} words in {len(groups)} timed lyric captions; detected language={info.language}.")
+    return srt, transcript
+
 def make_qawwali_video():
     """Use Qawwali audio over a separate mood-matched stock background video."""
     global BACKGROUND_CREDIT, DURATION, MOOD
@@ -1175,20 +1236,42 @@ def make_qawwali_video():
     DURATION=min(60.0,get_audio_duration(audio_path))
     if DURATION<12:
         raise RuntimeError(f"Qawwali audio is too short for a Short ({DURATION:.1f}s).")
+
+    # Actual spoken lyrics are transcribed and timed; no invented lyric text is shown.
+    subtitle_file, transcript_file = transcribe_qawwali_words(audio_path)
+    subtitle_path = str(subtitle_file.resolve()).replace("\\", "\\\\").replace(":", "\\:")
+    subtitle_filter = (
+        "subtitles=filename='" + subtitle_path + "':charenc=UTF-8:"
+        "force_style='FontName=Noto Naskh Arabic,FontSize=22,PrimaryColour=&H00FFFFFF,"
+        "OutlineColour=&H00101010,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=230'"
+    )
+    video_filter = (
+        "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+        "setsar=1,fps=24,trim=duration=" + str(DURATION) +
+        ",setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.8,fade=t=out:st=" +
+        str(max(0,DURATION-1.2)) + ":d=1.2," + subtitle_filter + "[v]"
+    )
+    audio_filter = (
+        "[1:a]atrim=duration=" + str(DURATION) +
+        ",asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=7,"
+        "afade=t=in:st=0:d=0.5,afade=t=out:st=" +
+        str(max(0,DURATION-1.5)) + ":d=1.5[a]"
+    )
     cmd=["ffmpeg","-y","-stream_loop","-1","-i",str(bg),"-i",str(audio_path),
-        "-filter_complex",
-        "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=24,trim=duration="+str(DURATION)+",setpts=PTS-STARTPTS,fade=t=in:st=0:d=0.8,fade=t=out:st="+str(max(0,DURATION-1.2))+":d=1.2[v];"
-        "[1:a]atrim=duration="+str(DURATION)+",asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=7,afade=t=in:st=0:d=0.5,afade=t=out:st="+str(max(0,DURATION-1.5))+":d=1.5[a]",
+        "-filter_complex",video_filter+";"+audio_filter,
         "-map","[v]","-map","[a]","-t",str(DURATION),"-r","24","-c:v","libx264",
         "-preset","veryfast","-pix_fmt","yuv420p","-c:a","aac","-b:a","160k",
         "-movflags","+faststart",str(OUT)]
     run(cmd)
     Path("poetry_demo.txt").write_text(
-        "Title: Qawwali Shorts\nMood: "+MOOD+"\nLanguage: Urdu\nDuration: "+str(round(DURATION,2))+"s\n\n"
-        "Moving stock background video matched to the Qawwali mood.\n\nBackground: "+BACKGROUND_CREDIT+
-        "\nQawwali audio: "+audio_credit+"\nAudio: Original Qawwali audio extracted and retained; no live-performance video used.\n",
+        "Title: Qawwali Shorts\\nMood: "+MOOD+"\\nLanguage: "+str(getattr(info if 'info' in locals() else None,'language','auto'))+
+        "\\nDuration: "+str(round(DURATION,2))+"s\\n\\n"
+        "Timed word-level lyrics are burned into the video from the actual Qawwali audio.\\n"
+        "Transcript: "+str(transcript_file)+"\\n"
+        "Moving stock background video (random mood-matched selection).\\nBackground: "+BACKGROUND_CREDIT+
+        "\\nQawwali audio: "+audio_credit+"\\n",
         encoding="utf-8")
-    print(f"SUCCESS: Qawwali audio over mood-matched moving background: {OUT} ({OUT.stat().st_size} bytes).")
+    print(f"SUCCESS: Qawwali lyrics reel with synchronized captions: {OUT} ({OUT.stat().st_size} bytes).")    print(f"SUCCESS: Qawwali audio over mood-matched moving background: {OUT} ({OUT.stat().st_size} bytes).")
 
 
 def main():
