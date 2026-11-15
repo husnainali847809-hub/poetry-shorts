@@ -835,6 +835,32 @@ def get_online_music():
         print(f"Jamendo language-specific song search failed: {exc}")
     return None
 
+def get_local_music():
+    """Select a validated MP3 from the language-specific music folder."""
+    language_folder = "urdu" if LANG in ("Urdu", "Roman Urdu") else "english"
+    folder = Path("music") / language_folder
+    supported = {".mp3", ".m4a", ".wav", ".ogg", ".flac"}
+    candidates = [p for p in folder.iterdir()
+                  if p.is_file() and p.suffix.lower() in supported and p.stat().st_size > 10000] if folder.exists() else []
+    random.shuffle(candidates)
+    for path in candidates:
+        try:
+            probe = subprocess.run(
+                ["ffmpeg", "-v", "error", "-i", str(path), "-t", "2", "-f", "null", "-"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            )
+            if probe.returncode == 0:
+                print(f"Using local {language_folder} music: {path.name}")
+                return path
+            print(f"Skipping unreadable music file: {path}")
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"Could not validate music file {path}: {exc}")
+    raise RuntimeError(
+        f"No usable music file found in {folder}. Upload an MP3 (or WAV/OGG/M4A/FLAC) "
+        f"for {LANG} poetry, then rerun the workflow."
+    )
+
+
 def make_mood_music(title, lines):
     """Compose a fresh, gentle piano-and-strings instrumental using a SoundFont."""
     try:
@@ -921,8 +947,7 @@ def make_mood_music(title, lines):
 
 
 def render_video(title,lines,bg,music,voice=None):
-    if voice is None:
-        raise RuntimeError("A verified human recitation is required; refusing instrumental-only video output.")
+    # If no matching human recitation exists, keep the earlier text-poetry + music format.
     page=text_page_png(title,lines)
     if bg.suffix.lower()==".mp4":
         inputs=["-stream_loop","-1","-i",str(bg),"-loop","1","-i",str(page)]
@@ -952,7 +977,7 @@ def render_video(title,lines,bg,music,voice=None):
       "-c:v","libx264","-preset","veryfast","-pix_fmt","yuv420p","-s","1080x1920",
       "-c:a","aac","-b:a","160k","-movflags","+faststart",str(OUT)]
     run(cmd)
-    audio_note = "Human poetry recitation + quiet original instrumental." if voice is not None else "No suitable human recitation found; original instrumental only (no AI voice or unrelated song)."
+    audio_note = "Human poetry recitation + quiet local background music." if voice is not None else "No matching human recitation found; text poetry + local language-matched background music (no AI voice)."
     Path("poetry_demo.txt").write_text(f"Title: {title}\nMood: {MOOD}\nLanguage: {LANG}\nDuration: {DURATION}s\n\n"+
       "\n".join(lines)+"\n\nBackground: "+BACKGROUND_CREDIT+"\nShort 2–3 line poetry displayed directly on background; no text box or watermark.\nAudio: "+audio_note+"\n",encoding="utf-8")
 
@@ -975,11 +1000,12 @@ def main():
     if bg is None:
         raise RuntimeError("No usable internet photo/video could be downloaded; no AI image will be generated.")
 
-    # Search for an actual human poetry recitation, not a song or synthetic narration.
+    # Prefer a real human recitation. If none matches this generated poem,
+    # fall back to the original text-on-screen poetry video with local background music.
     voice=get_online_poetry_voice(title,lines)
     if voice is None:
-        raise RuntimeError("No licensed human recitation matching this exact poem was found. Video generation stopped; instrumental-only output will not be marked successful or published.")
-    music=make_mood_music(title,lines)
+        print("No matching human recitation found; using text poetry + local background music fallback.")
+    music=get_local_music()
     render_video(title,lines,bg,music,voice)
     print(f"SUCCESS: {OUT} ({OUT.stat().st_size} bytes). Video generation completed.")
 
