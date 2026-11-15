@@ -1032,7 +1032,7 @@ def render_video(title,lines,bg,music,voice=None):
 
 
 def make_qawwali_video():
-    """Use licensed original Qawwali audio over a separate mood-matched stock background video."""
+    """Use Qawwali audio over a separate mood-matched stock background video."""
     global BACKGROUND_CREDIT, DURATION, MOOD
     # Identify the bot clearly and ask Commons politely; retry temporary rate limits.
     headers={"User-Agent":"PulsenamaShorts/1.1 (Qawwali audio search; contact: project maintainer)"}
@@ -1066,7 +1066,34 @@ def make_qawwali_video():
     MOOD=random.choice(["qawwali","spiritual","peaceful"])
     candidates=[]
     seen=set()
-    # Broader search phrases help Commons return more than one possible licensed recording.
+    audio_path=WORK/"qawwali_original_audio.mp3"
+    audio_credit=None
+
+    # Prefer audio files supplied by the project owner. No automatic license filtering.
+    local_folder=Path("qawwali")
+    supported_audio={".mp3",".m4a",".wav",".ogg",".flac"}
+    local_tracks=[p for p in local_folder.iterdir()
+                  if p.is_file() and p.suffix.lower() in supported_audio and p.stat().st_size>30000] if local_folder.exists() else []
+    random.shuffle(local_tracks)
+    for local_track in local_tracks:
+        try:
+            probe=subprocess.run(["ffprobe","-v","error","-show_entries","stream=codec_type",
+                "-of","json",str(local_track)],capture_output=True,text=True,timeout=30,check=True)
+            streams=json.loads(probe.stdout).get("streams",[])
+            if not any(x.get("codec_type")=="audio" for x in streams):
+                print(f"Skipping local file without an audio stream: {local_track.name}")
+                continue
+            extract=subprocess.run(["ffmpeg","-y","-i",str(local_track),"-vn","-ac","2",
+                "-ar","44100","-codec:a","libmp3lame","-b:a","192k",str(audio_path)],
+                capture_output=True,text=True,timeout=120)
+            if extract.returncode==0 and audio_path.exists() and audio_path.stat().st_size>30000:
+                audio_credit=f"Project audio folder: {local_track.name}"
+                print(f"Using Qawwali audio supplied in {local_folder}/: {local_track.name}")
+                break
+        except (OSError,ValueError,subprocess.SubprocessError) as exc:
+            print(f"Skipping unreadable local Qawwali file {local_track.name}: {exc}")
+
+    # If no local Qawwali file exists, try the online Commons search as a fallback.
     for query in ("Qawwali","Sufi Qawwali","Nizamuddin Qawwali","Qawwali music recording","Sufi devotional music"):
         try:
             with commons_get(api,params={"action":"query","format":"json","generator":"search",
@@ -1087,9 +1114,7 @@ def make_qawwali_video():
             print(f"Commons Qawwali audio search failed: {exc}")
 
     random.shuffle(candidates)
-    audio_path=WORK/"qawwali_original_audio.mp3"
-    audio_credit=None
-    for page,url,meta in candidates:
+    for page,url,meta in (candidates if not audio_credit else []):
         source_path=WORK/"qawwali_audio_source"
         try:
             # Try the API-provided original URL, then Commons' canonical file redirect.
@@ -1129,7 +1154,7 @@ def make_qawwali_video():
             page_url="https://commons.wikimedia.org/wiki/"+page.get("title","").replace(" ","_")
             artist=(meta.get("Artist") or {}).get("value","Unknown")
             audio_credit=f"Wikimedia Commons: {title} | Creator: {artist} | {page_url}"
-            print(f"Using original Qawwali audio from licensed source: {title}")
+            print(f"Using original Qawwali audio from online source: {title}")
             break
         except (requests.RequestException,OSError,ValueError,subprocess.SubprocessError) as exc:
             print(f"Skipping unusable Qawwali audio source: {exc}")
@@ -1137,7 +1162,7 @@ def make_qawwali_video():
             audio_path.unlink(missing_ok=True)
 
     if not audio_credit:
-        raise RuntimeError("No Qawwali audio with a usable audio stream was found.")
+        raise RuntimeError("No usable Qawwali audio found. Add an MP3/WAV/M4A/OGG/FLAC file to qawwali/ and rerun.")
 
     # Search a separate moving stock clip to visually match the Qawwali mood.
     bg=get_pexels_video()
