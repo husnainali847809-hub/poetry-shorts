@@ -7,9 +7,9 @@ Pulsenama automatically creates short vertical poetry videos in Urdu, Roman Urdu
 - Chooses the mood, language, and duration automatically.
 - Generates a short 2–3 line poem, with a built-in poem fallback when the AI response is unavailable.
 - Finds a mood-matched portrait video or photo for the background.
-- Uses a language-matched vocal song when one is available.
-- If no vocal song can be fetched, creates and uses its own mood-matched piano-and-strings instrumental so video generation continues.
-- Keeps a Google Drive music-loader hook in the pipeline for the planned Drive song library; the Drive connection itself is not configured yet.
+- Searches Wikimedia Commons for a real human poetry recitation matching the selected language (Urdu/Hindi for Urdu posts, English for English posts).
+- When a recitation is found, places it clearly in the foreground and mixes a quiet, original piano-and-strings instrumental underneath.
+- Never generates an AI speaking voice and never substitutes an unrelated vocal song for a missing poetry recitation; if no suitable recitation is found, it uses the original instrumental alone.
 - Renders a 1080×1920 MP4 and a text/attribution file.
 - Creates a Buffer caption in the poem's language, adds a short mood-matched line, and includes relevant Urdu or English hashtags automatically.
 
@@ -37,7 +37,6 @@ When both are configured, each generated video is sent to that channel using Buf
 - `OPENROUTER_API_KEY` — AI poem generation.
 - `PEXELS_API_KEY` — Pexels video/photo search (optional).
 - `PIXABAY_API_KEY` — Pixabay video/photo search (optional).
-- `JAMENDO_CLIENT_ID` — vocal-song search (optional).
 
 ## Generated files
 
