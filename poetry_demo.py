@@ -566,7 +566,7 @@ def text_page_png(title, lines, bg):
         current=""
         for word in words:
             candidate=(current+" "+word).strip()
-            test_font=get_font(60 if rtl else 54)
+            test_font=get_font(46 if rtl else 44)
             if current and width(candidate,test_font)>max_width:
                 wrapped.append(current)
                 current=word
@@ -578,7 +578,7 @@ def text_page_png(title, lines, bg):
 
     # Find the largest font that fits every line and the full upper safe area.
     chosen=None
-    for size in range(52 if rtl else 48, 29, -2):
+    for size in range(46 if rtl else 44, 27, -2):
         font=get_font(size)
         boxes=[measure(line,font) for line in visible]
         heights=[max(1,b[3]-b[1]) for b in boxes]
@@ -588,16 +588,16 @@ def text_page_png(title, lines, bg):
             chosen=(font,boxes,heights,gap,total_h)
             break
     if chosen is None:
-        font=get_font(30)
+        font=get_font(28)
         boxes=[measure(line,font) for line in visible]
         heights=[max(1,b[3]-b[1]) for b in boxes]
-        gap=12
+        gap=10
         total_h=sum(heights)+gap*max(0,len(heights)-1)
     else:
         font,boxes,heights,gap,total_h=chosen
 
     # Place the smaller poem higher, with comfortable space from the top edge.
-    y=max(int(H*0.17),int(H*0.25-total_h/2))
+    y=max(int(H*0.21),int(H*0.26-total_h/2))
     y=min(y,int(H*0.34-total_h))
     for line,b,height in zip(visible,boxes,heights):
         text_w=b[2]-b[0]
