@@ -914,6 +914,8 @@ def make_mood_music(title, lines):
 
 
 def render_video(title,lines,bg,music,voice=None):
+    if voice is None:
+        raise RuntimeError("A verified human recitation is required; refusing instrumental-only video output.")
     page=text_page_png(title,lines)
     if bg.suffix.lower()==".mp4":
         inputs=["-stream_loop","-1","-i",str(bg),"-loop","1","-i",str(page)]
