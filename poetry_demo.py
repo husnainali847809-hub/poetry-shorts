@@ -204,6 +204,92 @@ def get_pixabay_video():
     return None
 
 
+
+def get_archive_video():
+    """Fetch a random non-performance moving background clip from Internet Archive (no API key)."""
+    global BACKGROUND_CREDIT
+    # Keep visuals generic and separate from the Qawwal/audio performance.
+    visual_terms = {
+        "qawwali": ["nature landscape", "lantern night", "ocean waves", "forest river", "city lights"],
+        "spiritual": ["mosque architecture", "lantern night", "stars sky", "mountain sunrise", "forest river"],
+        "peaceful": ["ocean waves", "forest river", "mountain sunrise", "clouds sky", "waterfall"]
+    }
+    term = random.choice(visual_terms.get(MOOD, ["nature landscape", "ocean waves", "forest river"]))
+    try:
+        search = requests.get(
+            "https://archive.org/advancedsearch.php",
+            params={
+                "q": f'mediatype:movies AND (title:("{term}") OR description:("{term}"))',
+                "fl[]": ["identifier", "title"],
+                "rows": 35,
+                "page": 1,
+                "output": "json"
+            },
+            timeout=35
+        )
+        search.raise_for_status()
+        docs = (search.json().get("response") or {}).get("docs") or []
+        random.shuffle(docs)
+        for doc in docs:
+            identifier = doc.get("identifier")
+            if not identifier:
+                continue
+            try:
+                meta_response = requests.get(
+                    "https://archive.org/metadata/" + requests.utils.quote(identifier, safe=""),
+                    timeout=35
+                )
+                meta_response.raise_for_status()
+                files = (meta_response.json().get("files") or [])
+                mp4s = [
+                    item for item in files
+                    if str(item.get("name", "")).lower().endswith(".mp4")
+                    and int(item.get("size") or 0) > 250000
+                    and not item.get("private")
+                ]
+                random.shuffle(mp4s)
+                for item in mp4s[:4]:
+                    filename = item["name"]
+                    from urllib.parse import quote
+                    url = "https://archive.org/download/" + quote(identifier, safe="") + "/" + quote(filename, safe="/")
+                    path = WORK / "background.mp4"
+                    try:
+                        with requests.get(url, stream=True, timeout=100) as response:
+                            response.raise_for_status()
+                            with path.open("wb") as output:
+                                for chunk in response.iter_content(1024 * 1024):
+                                    if chunk:
+                                        output.write(chunk)
+                        if path.stat().st_size < 200000:
+                            path.unlink(missing_ok=True)
+                            continue
+                        probe = subprocess.run(
+                            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                             "-show_entries", "stream=codec_type,width,height",
+                             "-of", "json", str(path)],
+                            capture_output=True, text=True, timeout=30, check=True
+                        )
+                        streams = json.loads(probe.stdout).get("streams", [])
+                        if not streams or not any(x.get("codec_type") == "video" for x in streams):
+                            path.unlink(missing_ok=True)
+                            continue
+                        title = doc.get("title", identifier)
+                        BACKGROUND_CREDIT = (
+                            "Internet Archive: " + str(title) +
+                            " | https://archive.org/details/" + identifier
+                        )
+                        print("Using random moving background video from Internet Archive: " + str(title))
+                        return path
+                    except (requests.RequestException, OSError, ValueError, subprocess.SubprocessError) as exc:
+                        print(f"Internet Archive video candidate failed; trying another: {exc}")
+                        path.unlink(missing_ok=True)
+            except (requests.RequestException, ValueError, KeyError) as exc:
+                print(f"Internet Archive metadata lookup failed; trying another item: {exc}")
+        print("Internet Archive returned no usable moving background video for this search.")
+    except (requests.RequestException, ValueError, KeyError) as exc:
+        print(f"Internet Archive video search failed: {exc}")
+    return None
+
 def get_pixabay_image():
     """Fetch a real, mood-matched portrait photo from Pixabay."""
     global BACKGROUND_CREDIT
@@ -1231,7 +1317,10 @@ def make_qawwali_video():
     if bg is None:
         bg=get_pixabay_video()
     if bg is None:
-        raise RuntimeError("No suitable mood-matched background video was found. Add PEXELS_API_KEY or PIXABAY_API_KEY; no live Qawwal footage or still image will be substituted.")
+        print("Pexels/Pixabay did not return a usable clip; trying a no-key Internet Archive video source.")
+        bg=get_archive_video()
+    if bg is None:
+        raise RuntimeError("No usable moving background video was found from Pexels, Pixabay, or Internet Archive. Check network access or add a video file to backgrounds/.")
 
     DURATION=min(60.0,get_audio_duration(audio_path))
     if DURATION<12:
