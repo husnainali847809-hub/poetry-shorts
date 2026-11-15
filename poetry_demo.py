@@ -1090,7 +1090,7 @@ def transcribe_qawwali_words(audio_path):
     transcript = WORK / "qawwali_transcript.txt"
     transcript.write_text("\n".join(plain), encoding="utf-8")
     print(f"Transcription complete: {len(words)} words in {len(groups)} timed lyric captions; detected language={info.language}.")
-    return srt, transcript
+    return srt, transcript, info.language
 
 def make_qawwali_video():
     """Use Qawwali audio over a separate mood-matched stock background video."""
@@ -1238,7 +1238,7 @@ def make_qawwali_video():
         raise RuntimeError(f"Qawwali audio is too short for a Short ({DURATION:.1f}s).")
 
     # Actual spoken lyrics are transcribed and timed; no invented lyric text is shown.
-    subtitle_file, transcript_file = transcribe_qawwali_words(audio_path)
+    subtitle_file, transcript_file, detected_language = transcribe_qawwali_words(audio_path)
     subtitle_path = str(subtitle_file.resolve()).replace("\\", "\\\\").replace(":", "\\:")
     subtitle_filter = (
         "subtitles=filename='" + subtitle_path + "':charenc=UTF-8:"
@@ -1264,14 +1264,14 @@ def make_qawwali_video():
         "-movflags","+faststart",str(OUT)]
     run(cmd)
     Path("poetry_demo.txt").write_text(
-        "Title: Qawwali Shorts\\nMood: "+MOOD+"\\nLanguage: "+str(getattr(info if 'info' in locals() else None,'language','auto'))+
-        "\\nDuration: "+str(round(DURATION,2))+"s\\n\\n"
-        "Timed word-level lyrics are burned into the video from the actual Qawwali audio.\\n"
-        "Transcript: "+str(transcript_file)+"\\n"
-        "Moving stock background video (random mood-matched selection).\\nBackground: "+BACKGROUND_CREDIT+
-        "\\nQawwali audio: "+audio_credit+"\\n",
+        "Title: Qawwali Shorts\nMood: "+MOOD+"\nLanguage: "+str(detected_language)+
+        "\nDuration: "+str(round(DURATION,2))+"s\n\n"
+        "Timed word-level lyrics are burned into the video from the actual Qawwali audio.\n"
+        "Transcript: "+str(transcript_file)+"\n"
+        "Moving stock background video (random mood-matched selection).\nBackground: "+BACKGROUND_CREDIT+
+        "\nQawwali audio: "+audio_credit+"\n",
         encoding="utf-8")
-    print(f"SUCCESS: Qawwali lyrics reel with synchronized captions: {OUT} ({OUT.stat().st_size} bytes).")    print(f"SUCCESS: Qawwali audio over mood-matched moving background: {OUT} ({OUT.stat().st_size} bytes).")
+    print(f"SUCCESS: Qawwali lyrics reel with synchronized captions: {OUT} ({OUT.stat().st_size} bytes).")
 
 
 def main():
