@@ -1003,6 +1003,7 @@ def render_video(title,lines,bg,music,voice=None):
       "\n".join(lines)+"\n\nBackground: "+BACKGROUND_CREDIT+"\nShort 2–3 line poetry displayed directly on background; no text box or watermark.\nAudio: "+audio_note+"\n",encoding="utf-8")
 
 def main():
+    global DURATION
     print(f"Auto-selected: {MOOD} mood / {LANG} / {DURATION}s.")
     title,lines=make_poem()
     lines=lines[:3]
@@ -1026,7 +1027,6 @@ def main():
     voice=get_online_poetry_voice(title,lines)
     if voice is None:
         print("No matching human recitation found; using text poetry + local background music fallback.")
-    global DURATION
     if voice is not None:
         voice_duration = get_audio_duration(voice)
         music = get_local_music(voice_duration)
