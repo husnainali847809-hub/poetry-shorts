@@ -1078,19 +1078,18 @@ def make_qawwali_video():
                 meta=info.get("extmetadata") or {}
                 mime=info.get("mime","")
                 url=info.get("url","")
-                license_name=(meta.get("LicenseShortName") or {}).get("value","").lower()
                 title=page.get("title","")
-                if title not in seen and mime.startswith("video/") and url and any(x in license_name for x in
-                    ("cc0","public domain","cc by","cc-by","cc by-sa","cc-by-sa")):
+                # License filtering intentionally removed as requested.
+                if title not in seen and mime.startswith("video/") and url:
                     seen.add(title)
-                    candidates.append((page,url,meta,license_name))
+                    candidates.append((page,url,meta))
         except (requests.RequestException,ValueError,KeyError) as exc:
             print(f"Commons Qawwali audio search failed: {exc}")
 
     random.shuffle(candidates)
     audio_path=WORK/"qawwali_original_audio.mp3"
     audio_credit=None
-    for page,url,meta,license_name in candidates:
+    for page,url,meta in candidates:
         source_path=WORK/"qawwali_audio_source"
         try:
             # Try the API-provided original URL, then Commons' canonical file redirect.
@@ -1129,7 +1128,7 @@ def make_qawwali_video():
             title=page.get("title","Qawwali audio").replace("File:","",1)
             page_url="https://commons.wikimedia.org/wiki/"+page.get("title","").replace(" ","_")
             artist=(meta.get("Artist") or {}).get("value","Unknown")
-            audio_credit=f"Wikimedia Commons: {title} | Creator: {artist} | License: {license_name} | {page_url}"
+            audio_credit=f"Wikimedia Commons: {title} | Creator: {artist} | {page_url}"
             print(f"Using original Qawwali audio from licensed source: {title}")
             break
         except (requests.RequestException,OSError,ValueError,subprocess.SubprocessError) as exc:
@@ -1138,7 +1137,7 @@ def make_qawwali_video():
             audio_path.unlink(missing_ok=True)
 
     if not audio_credit:
-        raise RuntimeError("No licensed Qawwali audio with a usable audio stream was found.")
+        raise RuntimeError("No Qawwali audio with a usable audio stream was found.")
 
     # Search a separate moving stock clip to visually match the Qawwali mood.
     bg=get_pexels_video()
