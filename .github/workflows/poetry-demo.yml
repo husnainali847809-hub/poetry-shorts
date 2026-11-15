@@ -2,6 +2,15 @@ name: Pulsenama AI Poetry Video Creator
 
 on:
   workflow_dispatch:
+    inputs:
+      video_mode:
+        description: "Choose which video to generate for a manual test"
+        required: true
+        type: choice
+        options:
+          - qawwali
+          - poetry
+        default: qawwali
   schedule:
     # Pakistan time (UTC+5): 09:00 Qawwali, 12:00 Poetry, 15:00 Poetry, 18:00 Qawwali, 21:00 Poetry.
     - cron: "0 4 * * *"
@@ -39,6 +48,7 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           SCHEDULE_CRON: ${{ github.event.schedule }}
+          VIDEO_MODE_OVERRIDE: ${{ inputs.video_mode }}
         run: python poetry_demo.py
       - name: Host video publicly for Buffer
         id: video-host
