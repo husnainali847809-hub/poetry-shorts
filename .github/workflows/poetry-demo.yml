@@ -3,10 +3,12 @@ name: Pulsenama AI Poetry Video Creator
 on:
   workflow_dispatch:
   schedule:
-    # Four daily runs at 09:00, 13:00, 17:00 and 21:00 Pakistan time (UTC+5).
+    # Five daily runs at 09:00, 12:00, 15:00, 18:00 and 21:00 Pakistan time (UTC+5).
+    # The first four generate Urdu/Punjabi; the 21:00 slot generates English.
     - cron: "0 4 * * *"
-    - cron: "0 8 * * *"
-    - cron: "0 12 * * *"
+    - cron: "0 7 * * *"
+    - cron: "0 10 * * *"
+    - cron: "0 13 * * *"
     - cron: "0 16 * * *"
 
 permissions:
@@ -37,7 +39,6 @@ jobs:
           OPENROUTER_MODEL: openrouter/free
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
-          JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
         run: python poetry_demo.py
       - name: Host video publicly for Buffer
         id: video-host
