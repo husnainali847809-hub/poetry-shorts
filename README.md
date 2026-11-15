@@ -7,9 +7,9 @@ Pulsenama automatically creates short vertical poetry videos in Urdu, Roman Urdu
 - Chooses the mood, language, and duration automatically.
 - Generates a short 2–3 line poem, with a built-in poem fallback when the AI response is unavailable.
 - Finds a mood-matched portrait video or photo for the background.
-- Searches Wikimedia Commons for a real human poetry recitation matching the selected language (Urdu/Hindi for Urdu posts, English for English posts).
-- When a recitation is found, places it clearly in the foreground and mixes a quiet, original piano-and-strings instrumental underneath.
-- Never generates an AI speaking voice and never substitutes an unrelated vocal song for a missing poetry recitation; if no suitable recitation is found, it uses the original instrumental alone.
+- Searches Wikimedia Commons for a licensed human recording that matches the actual displayed poem text, not merely the same language or a generic poetry keyword.
+- When an exact-text recording is found, places it clearly in the foreground and mixes a quiet, original piano-and-strings instrumental underneath.
+- Never generates an AI speaking voice or substitutes an unrelated recitation/song. If no licensed human recording matching the displayed poem is found, generation stops and no instrumental-only video is published.
 - Renders a 1080×1920 MP4 and a text/attribution file.
 - Creates a Buffer caption in the poem's language, adds a short mood-matched line, and includes relevant Urdu or English hashtags automatically.
 
