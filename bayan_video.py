@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Create one daily Urdu Islamic reminder video using only music/bayan audio."""
 import json
-import os
 import random
 from pathlib import Path
 
@@ -87,7 +86,7 @@ def main():
     p.WORK.mkdir(exist_ok=True)
     title, lines = make_bayan_text()
     music, music_duration = choose_bayan_music()
-    p.DURATION = min(max(15, music_duration), 45)
+    p.DURATION = min(music_duration, 45)
     bg = p.get_pexels_video()
     if bg is None:
         bg = p.get_pixabay_video()
