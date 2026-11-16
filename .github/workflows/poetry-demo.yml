@@ -3,7 +3,7 @@ name: Pulsenama AI Poetry Video Creator
 on:
   workflow_dispatch:
   schedule:
-    # Pakistan time (UTC+5): 9 AM, 12 PM, 6 PM Urdu; 3 PM Punjabi; 9 PM English.
+    # Pakistan time (UTC+5): 9 AM, 12 PM, 6 PM Urdu; 3 PM Punjabi; 7 PM Islamic bayan; 9 PM English.
     - cron: "0 4 * * *"
     - cron: "0 7 * * *"
     - cron: "0 10 * * *"
@@ -33,7 +33,7 @@ jobs:
           pip install requests Pillow pretty_midi faster-whisper
       - name: Validate script
         run: python -m py_compile poetry_demo.py bayan_video.py buffer_publish.py
-      - name: Generate poetry video
+      - name: Generate scheduled poetry or Islamic bayan video
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: openrouter/free
