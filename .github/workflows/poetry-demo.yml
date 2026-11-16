@@ -3,13 +3,12 @@ name: Pulsenama AI Poetry Video Creator
 on:
   workflow_dispatch:
   schedule:
-    # Pakistan time (UTC+5): 9 AM, 12 PM, 6 PM Urdu; 3 PM Punjabi; 7 PM Islamic bayan; 9 PM English.
-    - cron: "0 4 * * *"
+    # Pakistan time (UTC+5): 9 AM Islamic bayan; 12 PM and 6 PM Urdu; 3 PM Punjabi; 9 PM English.
+    - cron: "0 4 * * *" # 9 AM Pakistan time: daily Islamic bayan
     - cron: "0 7 * * *"
     - cron: "0 10 * * *"
     - cron: "0 13 * * *"
     - cron: "0 16 * * *"
-    - cron: "0 14 * * *" # 7 PM Pakistan time: one additional Islamic bayan video
 
 permissions:
   contents: write
@@ -42,8 +41,8 @@ jobs:
           WHISPER_MODEL: small
           SCHEDULE_CRON: ${{ github.event.schedule }}
         run: |
-          if [ "$SCHEDULE_CRON" = "0 14 * * *" ]; then
-            echo "7 PM Pakistan slot: generating the daily Islamic bayan video."
+          if [ "$SCHEDULE_CRON" = "0 4 * * *" ]; then
+            echo "9 AM Pakistan slot: generating the daily Islamic bayan video."
             python bayan_video.py
           else
             python poetry_demo.py
