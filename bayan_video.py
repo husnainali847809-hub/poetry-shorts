@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Create one daily Urdu Islamic reminder video using only music/bayan audio."""
+import json
+import os
+import random
+from pathlib import Path
+
+import poetry_demo as p
+
+def make_bayan_text():
+    """Generate original devotional reminders; never fabricate Quran/Hadith quotations."""
+    fallback = [
+        ("اللہ کی رحمت", [
+            "جب دل پریشان ہو تو اپنے رب کو یاد کرو",
+            "اللہ کی رحمت سے کبھی مایوس نہ ہونا"
+        ]),
+        ("محبتِ رسول ﷺ", [
+            "رسول اللہ ﷺ کی سیرت ہمارے لیے بہترین رہنمائی ہے",
+            "آپ ﷺ کی تعلیمات پر عمل ہی سچی محبت کا راستہ ہے"
+        ]),
+        ("شکر کی نعمت", [
+            "ہر حال میں اللہ کا شکر ادا کرنا سیکھو",
+            "شکر گزار دل چھوٹی نعمت میں بھی خوشی پا لیتا ہے"
+        ]),
+        ("نماز اور سکون", [
+            "اپنے رب کے سامنے دل کی بات رکھو",
+            "نماز کو اپنی زندگی کا سکون بناؤ"
+        ]),
+        ("حسنِ اخلاق", [
+            "نرمی اور اچھا اخلاق دلوں کو قریب کرتے ہیں",
+            "لوگوں کے ساتھ وہی سلوک کرو جو اپنے لیے پسند ہو"
+        ])
+    ]
+    if not p.KEY:
+        return random.choice(fallback)
+    prompt = """Write an original, respectful Urdu Islamic reminder for a short vertical video.
+Topic: choose one among Allah's mercy, gratitude to Allah, prayer, good character, or love and following the authentic Seerah of Prophet Muhammad ﷺ.
+Return ONLY JSON: {"title":"short Urdu title","lines":["short Urdu line 1","short Urdu line 2"]}.
+Use proper Urdu script, 2 concise lines only. This must be original explanatory wording, NOT a Quran verse, hadith, dua, or quotation. Do not invent religious rulings, Arabic text, references, sayings, or claim that the Prophet ﷺ said these words. Do not add sectarian content."""
+    try:
+        import requests
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {p.KEY}", "Content-Type": "application/json"},
+            json={"model": p.MODEL, "messages": [{"role": "user", "content": prompt}],
+                  "temperature": 0.65, "max_tokens": 220},
+            timeout=60,
+        )
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"].strip()
+        content = content.removeprefix("```json").removesuffix("```").strip()
+        data = json.loads(content)
+        lines = [str(x).strip() for x in data.get("lines", []) if str(x).strip()]
+        title = str(data.get("title", "")).strip()[:70]
+        if not title or len(lines) != 2 or any(len(x) > 95 for x in lines):
+            raise ValueError("Invalid short Urdu bayan text")
+        return title, lines
+    except Exception as exc:
+        print(f"AI bayan text unavailable/invalid; using original safe fallback: {exc}")
+        return random.choice(fallback)
+
+def choose_bayan_music():
+    folder = Path("music/bayan")
+    extensions = {".mp3", ".m4a", ".wav", ".ogg", ".flac"}
+    files = [f for f in folder.iterdir() if f.is_file()
+             and f.suffix.lower() in extensions and f.stat().st_size > 10000]
+    valid = []
+    for file in files:
+        try:
+            duration = p.get_audio_duration(file)
+            if duration >= 8:
+                valid.append((file, duration))
+        except Exception as exc:
+            print(f"Skipping unreadable bayan audio {file.name}: {exc}")
+    if not valid:
+        raise RuntimeError("No usable audio found in music/bayan/. Add an MP3/WAV/M4A/OGG/FLAC file.")
+    chosen, duration = random.choice(valid)
+    print(f"Selected bayan folder audio: {chosen.name} ({duration:.1f}s)")
+    return chosen, duration
+
+def main():
+    p.LANG = "Urdu"
+    p.MOOD = "spiritual"
+    p.DURATION = 30
+    p.OUT = Path("poetry_demo.mp4")
+    p.WORK = Path("poetry_demo_work")
+    p.WORK.mkdir(exist_ok=True)
+    title, lines = make_bayan_text()
+    music, music_duration = choose_bayan_music()
+    p.DURATION = min(max(15, music_duration), 45)
+    bg = p.get_pexels_video()
+    if bg is None:
+        bg = p.get_pixabay_video()
+    if bg is None:
+        bg = p.get_online_image()
+    if bg is None:
+        bg = p.get_pixabay_image()
+    if bg is None:
+        bg = p.get_unsplash_image()
+    if bg is None:
+        raise RuntimeError("No suitable background photo/video found for bayan.")
+    p.render_video(title, lines, bg, music, voice=None)
+    Path("poetry_demo.txt").write_text(
+        f"ContentType: Bayan\nTitle: {title}\nMood: spiritual\nLanguage: Urdu\n"
+        f"Duration: {p.DURATION:.1f}s\n\n" + "\n".join(lines) +
+        f"\n\nBackground: {p.BACKGROUND_CREDIT}\n"
+        f"Audio: User-provided music from music/bayan/{music.name}\n",
+        encoding="utf-8"
+    )
+    print(f"SUCCESS: Daily Islamic bayan video created ({p.DURATION:.1f}s).")
+
+if __name__ == "__main__":
+    main()
