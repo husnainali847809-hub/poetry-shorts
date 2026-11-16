@@ -15,19 +15,18 @@ Pulsenama automatically creates short vertical poetry videos in Urdu, Roman Urdu
 
 ## Automatic schedule
 
-Six daily Pakistan-time slots (UTC+5):
-- 09:00 — Urdu poetry
+Five daily Pakistan-time slots (UTC+5):
+- 09:00 — Islamic bayan video (Urdu; audio selected only from `music/bayan/`)
 - 12:00 — Urdu poetry
 - 15:00 — Punjabi poetry
 - 18:00 — Urdu poetry
-- 19:00 — Islamic bayan video (Urdu; audio selected only from `music/bayan/`)
 - 21:00 — English poetry
 
 GitHub may start scheduled jobs a little later than the exact cron time. Generated videos are added to the configured Buffer queue, which publishes according to the channel's Buffer queue schedule.
 
 ## Islamic bayan videos
 
-The additional 19:00 Pakistan-time workflow creates one short Urdu Islamic reminder video daily. It randomly selects a usable audio file from `music/bayan/`, generates original devotional wording, and sends the video through the same Buffer publishing flow. The text generator is instructed not to invent Quran or Hadith quotations, references, or religious rulings. Keep bayan audio separate from poetry music folders, and only upload audio you have permission to use.
+The 09:00 Pakistan-time workflow creates one short Urdu Islamic reminder video daily. It randomly selects a usable audio file from `music/bayan/`, generates original devotional wording, and sends the video through the same Buffer publishing flow. The text generator is instructed not to invent Quran or Hadith quotations, references, or religious rulings. Keep bayan audio separate from poetry music folders, and only upload audio you have permission to use.
 
 ## Captions and hashtags
 
