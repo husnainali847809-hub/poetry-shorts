@@ -56,6 +56,15 @@ def build_caption(details):
             values[key.strip().lower()] = value.strip()
 
     title = values.get("title", "Pulsenama")
+    if values.get("contenttype", "").lower() == "bayan":
+        try:
+            start = lines.index("")
+            end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("Background:")), len(lines))
+            bayan_text = "\n".join(x.strip() for x in lines[start + 1:end] if x.strip())
+        except ValueError:
+            bayan_text = ""
+        caption = "\n\n".join(part for part in [title, bayan_text, "اللہ اور اس کے رسول ﷺ کی تعلیمات کو اپنی زندگی کا حصہ بنائیں۔", "مزید اسلامی یاددہانیوں کے لیے فالو کریں۔"] if part)
+        return caption + "\n\n#IslamicReminder #Allah #ProphetMuhammad ﷺ #Deen #Islam #Pulsenama"
     if "qawwali" in title.lower():
         return "A soulful Qawwali performance.\n\n#Qawwali #SufiMusic #QawwaliShorts #Pulsenama"
     mood = values.get("mood", "peaceful").lower()
