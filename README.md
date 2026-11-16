@@ -16,15 +16,20 @@ Pulsenama automatically creates short vertical poetry videos in Urdu, Roman Urdu
 ## Automatic schedule
 
 Six daily Pakistan-time slots (UTC+5):
-- 09:00 — Qawwali performance
+- 09:00 — Urdu poetry
 - 12:00 — Urdu poetry
-- 15:00 — Urdu poetry
-- 18:00 — Qawwali performance
+- 15:00 — Punjabi poetry
+- 18:00 — Urdu poetry
+- 19:00 — Islamic bayan video (Urdu; audio selected only from `music/bayan/`)
 - 21:00 — English poetry
 
-Qawwali slots search Wikimedia Commons for actual performance videos and retain original audio. If no usable Qawwali video is found, that run fails instead of substituting unrelated footage. GitHub may start scheduled jobs a little later than the exact cron time.
+GitHub may start scheduled jobs a little later than the exact cron time. Generated videos are added to the configured Buffer queue, which publishes according to the channel's Buffer queue schedule.
 
-## Islamic bayan videos\n\nThe additional 19:00 Pakistan-time workflow creates one short Urdu Islamic reminder video daily. It randomly selects a usable audio file from `music/bayan/`, generates original devotional wording, and queues the video through the same Buffer publishing flow. The text generator is instructed not to invent Quran or Hadith quotations, references, or religious rulings. Keep bayan audio separate from the poetry music folders. Only upload audio you have permission to use.\n\n## Captions and hashtags
+## Islamic bayan videos
+
+The additional 19:00 Pakistan-time workflow creates one short Urdu Islamic reminder video daily. It randomly selects a usable audio file from `music/bayan/`, generates original devotional wording, and sends the video through the same Buffer publishing flow. The text generator is instructed not to invent Quran or Hadith quotations, references, or religious rulings. Keep bayan audio separate from poetry music folders, and only upload audio you have permission to use.
+
+## Captions and hashtags
 
 Every Buffer post now includes the poem title and lines, a short mood-matched caption, a follow prompt in the same language, and relevant hashtags. Urdu posts use Urdu captions and Urdu hashtags; English posts use English captions and English hashtags. Hashtags also vary by the selected mood.
 
