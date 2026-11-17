@@ -606,13 +606,13 @@ def get_font(size):
 def poetry_text_color(bg):
     """Choose a mood-led text color, adjusted for contrast against the existing background."""
     palettes = {
-        "sad": ((185, 220, 255, 255), (28, 55, 92, 255)),
-        "rain": ((190, 225, 245, 255), (25, 58, 78, 255)),
-        "romantic": ((255, 190, 215, 255), (105, 35, 70, 255)),
-        "motivational": ((255, 215, 125, 255), (105, 65, 12, 255)),
-        "deep": ((225, 205, 255, 255), (62, 38, 92, 255)),
-        "peaceful": ((205, 245, 215, 255), (30, 78, 60, 255)),
-        "memories": ((255, 215, 175, 255), (105, 62, 35, 255)),
+        "sad": ((225, 240, 255, 255), (28, 55, 92, 255)),
+        "rain": ((225, 245, 255, 255), (25, 58, 78, 255)),
+        "romantic": ((255, 215, 232, 255), (105, 35, 70, 255)),
+        "motivational": ((255, 235, 160, 255), (105, 65, 12, 255)),
+        "deep": ((240, 225, 255, 255), (62, 38, 92, 255)),
+        "peaceful": ((225, 255, 230, 255), (30, 78, 60, 255)),
+        "memories": ((255, 232, 205, 255), (105, 62, 35, 255)),
     }
     light, dark = palettes.get(MOOD, palettes["peaceful"])
     sample = WORK / "poetry_color_sample.jpg"
@@ -627,9 +627,9 @@ def poetry_text_color(bg):
         crop = image.crop((30, 105, 330, 225)).resize((1, 1))
         red, green, blue = crop.getpixel((0, 0))
         brightness = 0.2126 * red + 0.7152 * green + 0.0722 * blue
-        color = dark if brightness > 150 else light
-        print(f"Mood-led {MOOD} poetry color selected with background contrast.")
-        return color
+        # Bright mood-matched text is paired with a dark outline and shadow.
+        print(f"Bright {MOOD} poetry color selected; dark outline adds contrast.")
+        return light
     except Exception as exc:
         print(f"Could not sample background for text contrast ({exc}); using mood color.")
         return light
@@ -673,7 +673,7 @@ def text_page_png(title, lines, bg):
 
     # Screenshot-like compact typography: modest size, no panel, no decorative effects.
     max_width = int(W * (0.72 if layout == "red_rule" else 0.82))
-    base_size = 43 if rtl else 40
+    base_size = 50 if rtl else 47
     visible = wrap_lines(max_width, base_size)
     chosen = None
     for size in range(base_size, 27, -2):
@@ -693,14 +693,21 @@ def text_page_png(title, lines, bg):
     else:
         font, boxes, heights, gap, total_h = chosen
 
+    def draw_bright_line(x, y, line):
+        kwargs = {"direction": "rtl"} if rtl else {}
+        # Soft dark shadow plus a strong outline keeps every Urdu/English line crisp.
+        d.text((x + 2, y + 4), line, font=font, fill=(0, 0, 0, 220),
+               stroke_width=7, stroke_fill=(0, 0, 0, 220), **kwargs)
+        d.text((x, y), line, font=font, fill=text_color,
+               stroke_width=3, stroke_fill=(16, 19, 34, 255), **kwargs)
+
     if layout == "center":
         # First reference: centered block, positioned in the upper-middle area.
         y = int(H * 0.30 - total_h / 2)
         for line, box, height in zip(visible, boxes, heights):
             text_w = box[2] - box[0]
             x = (W - text_w) // 2
-            kwargs = {"direction": "rtl"} if rtl else {}
-            d.text((x, y), line, font=font, fill=text_color, **kwargs)
+            draw_bright_line(x, y, line)
             y += height + gap
     else:
         # Second reference: text block beside a slim red vertical rule on the right.
@@ -713,8 +720,7 @@ def text_page_png(title, lines, bg):
         for line, box, height in zip(visible, boxes, heights):
             text_w = box[2] - box[0]
             x = max(55, rule_x - 24 - text_w)
-            kwargs = {"direction": "rtl"} if rtl else {}
-            d.text((x, y), line, font=font, fill=text_color, **kwargs)
+            draw_bright_line(x, y, line)
             y += height + gap
 
     path = WORK / "poetry_overlay.png"
