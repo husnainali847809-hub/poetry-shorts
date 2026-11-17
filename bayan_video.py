@@ -7,56 +7,48 @@ from pathlib import Path
 import poetry_demo as p
 
 def make_bayan_text():
-    """Generate original devotional reminders; never fabricate Quran/Hadith quotations."""
-    fallback = [
-        ("اللہ کی رحمت", [
+    """Use a small curated set of sourced Quran/Hadith meanings; never invent attribution."""
+    sourced_reminders = [
+        (
+            "اللہ تعالیٰ کا ارشاد ہے (سورۃ البقرۃ: 286)",
+            [
+                "اللہ کسی جان پر اس کی طاقت سے بڑھ کر بوجھ نہیں ڈالتا",
+                "یہ آیت ہمیں اللہ کی رحمت اور آسانی یاد دلاتی ہے"
+            ]
+        ),
+        (
+            "رسول اللہ ﷺ کا فرمان ہے (صحیح بخاری: 1)",
+            [
+                "اعمال کا دارومدار نیتوں پر ہے",
+                "اور ہر شخص کو وہی ملے گا جس کی اس نے نیت کی"
+            ]
+        )
+    ]
+    # These are original reminders, not Quran/Hadith quotations.
+    original_reminders = [
+        ("اسلامی یاد دہانی: اللہ کی رحمت", [
             "جب دل پریشان ہو تو اپنے رب کو یاد کرو",
             "اللہ کی رحمت سے کبھی مایوس نہ ہونا"
         ]),
-        ("محبتِ رسول ﷺ", [
+        ("اسلامی یاد دہانی: محبتِ رسول ﷺ", [
             "رسول اللہ ﷺ کی سیرت ہمارے لیے بہترین رہنمائی ہے",
             "آپ ﷺ کی تعلیمات پر عمل ہی سچی محبت کا راستہ ہے"
         ]),
-        ("شکر کی نعمت", [
+        ("اسلامی یاد دہانی: شکر", [
             "ہر حال میں اللہ کا شکر ادا کرنا سیکھو",
             "شکر گزار دل چھوٹی نعمت میں بھی خوشی پا لیتا ہے"
         ]),
-        ("نماز اور سکون", [
+        ("اسلامی یاد دہانی: نماز", [
             "اپنے رب کے سامنے دل کی بات رکھو",
             "نماز کو اپنی زندگی کا سکون بناؤ"
         ]),
-        ("حسنِ اخلاق", [
+        ("اسلامی یاد دہانی: حسنِ اخلاق", [
             "نرمی اور اچھا اخلاق دلوں کو قریب کرتے ہیں",
             "لوگوں کے ساتھ وہی سلوک کرو جو اپنے لیے پسند ہو"
         ])
     ]
-    if not p.KEY:
-        return random.choice(fallback)
-    prompt = """Write an original, respectful Urdu Islamic reminder for a short vertical video.
-Topic: choose one among Allah's mercy, gratitude to Allah, prayer, good character, or love and following the authentic Seerah of Prophet Muhammad ﷺ.
-Return ONLY JSON: {"title":"short Urdu title","lines":["short Urdu line 1","short Urdu line 2"]}.
-Use proper Urdu script, 2 concise lines only. This must be original explanatory wording, NOT a Quran verse, hadith, dua, or quotation. Do not invent religious rulings, Arabic text, references, sayings, or claim that the Prophet ﷺ said these words. Do not add sectarian content."""
-    try:
-        import requests
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {p.KEY}", "Content-Type": "application/json"},
-            json={"model": p.MODEL, "messages": [{"role": "user", "content": prompt}],
-                  "temperature": 0.65, "max_tokens": 220},
-            timeout=60,
-        )
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"].strip()
-        content = content.removeprefix("```json").removesuffix("```").strip()
-        data = json.loads(content)
-        lines = [str(x).strip() for x in data.get("lines", []) if str(x).strip()]
-        title = str(data.get("title", "")).strip()[:70]
-        if not title or len(lines) != 2 or any(len(x) > 95 for x in lines):
-            raise ValueError("Invalid short Urdu bayan text")
-        return title, lines
-    except Exception as exc:
-        print(f"AI bayan text unavailable/invalid; using original safe fallback: {exc}")
-        return random.choice(fallback)
+    # Prefer a sourced Quran/Hadith reminder; otherwise clearly label original advice.
+    return random.choice(sourced_reminders + original_reminders)
 
 def choose_bayan_music():
     folder = Path("music/bayan")
