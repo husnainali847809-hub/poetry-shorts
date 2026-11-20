@@ -1,39 +1,29 @@
-# Authorized creator video intake
+# Creator video queue
 
 Open **Actions → Authorized Creator Video Queue → Run workflow**.
 
-- **Enable account source fetch**: leave OFF until creator authorization and the feed secrets are configured.
-- **Enable Buffer posting**: turn OFF for a dry intake run; turn ON to queue an eligible video.
+- **Enable account source fetch**: scans the seven configured public creator profiles directly. No external feed URL or feed token is required.
+- **Enable Buffer posting**: turn ON to queue one eligible video to Buffer.
 
 ## Required GitHub Actions secrets
 
 - `BUFFER_API_KEY`
 - `BUFFER_CHANNEL_ID`
-- `CREATOR_SOURCE_FEED_URL`: HTTPS endpoint for a creator-authorized feed adapter.
-- `CREATOR_SOURCE_FEED_TOKEN`: bearer token for that endpoint.
 
-The feed must return JSON in this format:
+No `CREATOR_SOURCE_FEED_URL` or `CREATOR_SOURCE_FEED_TOKEN` secrets are used.
 
-```json
-{
-  "videos": [
-    {
-      "id": "unique-source-video-id",
-      "source_username": "jawad..382",
-      "download_url": "https://your-authorized-host.example/video.mov",
-      "source_url": "https://www.tiktok.com/@jawad..382/video/123",
-      "permission_granted": true,
-      "title": "Video title",
-      "views": 12000,
-      "likes": 900,
-      "comments": 40,
-      "attribution": "Shared with permission by @jawad..382",
-      "hashtags": ["#ShortVideos", "#CreatorContent", "#ForYou", "#Trending", "#Pulsenama"]
-    }
-  ]
-}
-```
+## Configured creator profiles
 
-Only the seven allowlisted accounts and entries with `permission_granted: true` are accepted. Media URLs must be HTTPS and have a supported original extension. Files are saved without transcoding. Videos are deduplicated by the feed's stable `id`; a video is marked posted only after Buffer confirms queue creation.
+- `jawad..382`
+- `hmxii_`
+- `ain.poetic`
+- `mr_dark_shayari`
+- `blurry_abdullah`
+- `idealads_2.0`
+- `lost_632`
 
-**Platform limitation:** TikTok Display API's `video.list` returns metadata for the TikTok user who authorized the app; it is not a general downloader for arbitrary usernames and does not provide original video-file downloads. Each account owner must authorize access, and the feed adapter must supply an original file that the owner explicitly allows to be reposted. No scraping, access-control bypass, or watermark removal is used. See TikTok's [Display API overview](https://developers.tiktok.com/docs/en/display-api-overview/) and [authorization guide](https://developers.tiktok.com/docs/en/display-api-get-started/).
+The workflow attempts to read publicly available profile/video information with yt-dlp. Platform restrictions, login requirements, rate limits, deleted/private videos, or format changes can prevent a profile from being read or a video from downloading. It does not bypass private-account restrictions or access controls. Use this only for videos whose owners have explicitly authorized reposting. Downloaded files are not transcoded; the source format is retained. Previously queued video IDs are skipped, and a video is marked posted only after Buffer confirms queue creation.
+
+## Buffer setup
+
+Add `BUFFER_API_KEY` and `BUFFER_CHANNEL_ID` under **Settings → Secrets and variables → Actions → New repository secret**.
