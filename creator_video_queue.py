@@ -29,8 +29,10 @@ def choose_video():
         if item.get("permission_granted") is not True: continue
         if not relative_file: continue
         media=(ROOT/relative_file).resolve()
-        media_root=(ROOT/"creator_videos").resolve()
-        if media_root not in media.parents: continue
+        # Accept creator-supplied media anywhere inside this repository; preserve its original format.
+        # The manifest remains the authorization gate, so random repository files are never auto-posted.
+        repo_root=ROOT.resolve()
+        if repo_root not in media.parents: continue
         if not media.is_file() or media.suffix.lower() not in VIDEO_EXTENSIONS: continue
         if media.stat().st_size < 100_000: continue
         views=max(0,int(item.get("views",0) or 0))
@@ -41,7 +43,16 @@ def choose_video():
         candidates.append((score,item,media))
     if not candidates:
         print("SKIP: No eligible creator-authorized video is available.")
-        print("Add an authorized video under creator_videos/ in its original supported format, with a matching manifest entry and permission_granted=true.")
+        found=[]
+        for path in ROOT.rglob("*"):
+            if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS and ".git" not in path.parts:
+                found.append(str(path.relative_to(ROOT)))
+        if found:
+            print("Video file(s) found in repository but not eligible: " + ", ".join(found[:20]))
+            print("Add the exact relative path to creator_videos/manifest.json and confirm source_username + permission_granted=true.")
+        else:
+            print("No supported video file exists anywhere in the checked-out repository.")
+            print("Upload the creator-authorized source video in its original format anywhere in the repository, then add its exact path to creator_videos/manifest.json.")
         print("Supported formats: " + ", ".join(sorted(VIDEO_EXTENSIONS)))
         print("No Buffer post was created and no posting history was changed.")
         return None, None, state
