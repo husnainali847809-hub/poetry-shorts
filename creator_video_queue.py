@@ -127,7 +127,13 @@ def main():
     while len(hashtags)<5: hashtags.append(TAGS[len(hashtags)])
     caption="\n".join([title,attribution," ".join(hashtags)])
     tag=f"creator-video-{re.sub(r'[^a-zA-Z0-9-]','-',str(item['id']))}"
-    subprocess.run(["gh","release","create",tag,str(media),"--title",title[:100],"--notes",attribution],check=True)
+    # Reuse an existing release when a previous run created it but Buffer failed.
+    release_exists=subprocess.run(["gh","release","view",tag],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
+    if release_exists:
+        subprocess.run(["gh","release","upload",tag,str(media),"--clobber"],check=True)
+        print(f"Reused existing GitHub release: {tag}")
+    else:
+        subprocess.run(["gh","release","create",tag,str(media),"--title",title[:100],"--notes",attribution],check=True)
     repo=os.getenv("GITHUB_REPOSITORY","")
     url=f"https://github.com/{repo}/releases/download/{tag}/{media.name}"
     query=f"""
