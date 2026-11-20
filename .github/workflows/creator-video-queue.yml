@@ -42,8 +42,8 @@ jobs:
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
           CREATOR_SOURCE_FEED_URL: ${{ secrets.CREATOR_SOURCE_FEED_URL }}
           CREATOR_SOURCE_FEED_TOKEN: ${{ secrets.CREATOR_SOURCE_FEED_TOKEN }}
-          ENABLE_ACCOUNT_SOURCE_FETCH: ${{ inputs.enable_account_source_fetch || 'false' }}
-          ENABLE_BUFFER_POSTING: ${{ inputs.enable_buffer_posting || 'true' }}
+          ENABLE_ACCOUNT_SOURCE_FETCH: ${{ inputs.enable_account_source_fetch || vars.ENABLE_ACCOUNT_SOURCE_FETCH || 'false' }}
+          ENABLE_BUFFER_POSTING: ${{ inputs.enable_buffer_posting || vars.ENABLE_BUFFER_POSTING || 'true' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
