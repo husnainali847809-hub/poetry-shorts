@@ -1,3 +1,4 @@
 requests
 cloudinary
 Pillow
+yt-dlp
