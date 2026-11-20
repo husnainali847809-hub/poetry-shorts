@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Fetch creator-authorized source-feed videos (opt-in), then queue one to Buffer."""
-import json, mimetypes, os, re, subprocess, sys
+"""Fetch videos from the configured creator accounts (opt-in) and queue one to Buffer."""
+import json, os, re, subprocess, sys
 from pathlib import Path
-from urllib.parse import urlparse
 import requests
+from yt_dlp import YoutubeDL
 
 ROOT=Path(__file__).resolve().parent
 MANIFEST=ROOT/"creator_videos"/"manifest.json"
@@ -13,80 +13,69 @@ ACCOUNTS=["jawad..382","hmxii_","ain.poetic","mr_dark_shayari","blurry_abdullah"
 TAGS=["#ShortVideos","#TrendingVideos","#ViralClips","#CreatorContent","#ForYou","#Pulsenama"]
 VIDEO_EXTENSIONS={".mp4",".mov",".m4v",".webm",".mkv",".avi",".mpeg",".mpg",".3gp",".ts",".mts",".m2ts",".wmv",".flv"}
 MAX_DOWNLOAD_BYTES=200*1024*1024
+VIDEOS_PER_ACCOUNT=3
 
 def read_json(path, default):
     if not path.exists(): return default
     return json.loads(path.read_text(encoding="utf-8"))
 
-def fetch_authorized_feed():
-    """Optional connector contract: a creator-authorized feed returns direct original-media URLs."""
+def fetch_account_videos():
+    """Try public creator profile pages directly; no external feed URL/token is needed."""
     if os.getenv("ENABLE_ACCOUNT_SOURCE_FETCH","false").lower() not in {"1","true","yes","on"}:
-        print("Account-source intake is OFF (workflow input).")
+        print("Account-source fetching is OFF (workflow input).")
         return
-    feed_url=os.getenv("CREATOR_SOURCE_FEED_URL","").strip()
-    token=os.getenv("CREATOR_SOURCE_FEED_TOKEN","").strip()
-    if not feed_url or not token:
-        raise RuntimeError("Account-source intake is ON but CREATOR_SOURCE_FEED_URL / CREATOR_SOURCE_FEED_TOKEN secrets are missing.")
-    parsed=urlparse(feed_url)
-    if parsed.scheme!="https" or not parsed.hostname:
-        raise RuntimeError("CREATOR_SOURCE_FEED_URL must be an HTTPS endpoint.")
-    response=requests.get(feed_url,headers={"Authorization":f"Bearer {token}","Accept":"application/json"},timeout=45)
-    response.raise_for_status()
-    payload=response.json()
-    entries=payload.get("videos",[])
     manifest=read_json(MANIFEST,{"videos":[]})
     known={str(x.get("id")) for x in manifest.get("videos",[])}
     INBOX.mkdir(parents=True,exist_ok=True)
     added=0
-    for entry in entries:
-        vid=str(entry.get("id","")).strip()
-        source=str(entry.get("source_username","")).lstrip("@")
-        media_url=str(entry.get("download_url","")).strip()
-        if not vid or vid in known or source not in ACCOUNTS: continue
-        if entry.get("permission_granted") is not True:
-            print(f"SKIP {vid}: source feed did not confirm creator permission.")
+    for username in ACCOUNTS:
+        profile=f"https://www.tiktok.com/@{username}"
+        opts={"quiet":True,"no_warnings":True,"extract_flat":"in_playlist","skip_download":True,
+              "playlistend":20,"socket_timeout":25}
+        try:
+            with YoutubeDL(opts) as ydl:
+                info=ydl.extract_info(profile,download=False)
+            entries=(info or {}).get("entries") or []
+        except Exception as exc:
+            print(f"[{username}] Could not read public profile: {exc}")
             continue
-        parsed_media=urlparse(media_url)
-        if parsed_media.scheme!="https" or not parsed_media.hostname:
-            print(f"SKIP {vid}: media URL must use HTTPS.")
-            continue
-        ext=Path(parsed_media.path).suffix.lower()
-        if ext not in VIDEO_EXTENSIONS:
-            print(f"SKIP {vid}: unsupported or missing original file extension ({ext or 'none'}).")
-            continue
-        target=INBOX/(re.sub(r"[^A-Za-z0-9_-]","_",vid)+ext)
-        if not target.exists():
-            with requests.get(media_url,stream=True,timeout=90) as media:
-                media.raise_for_status()
-                length=int(media.headers.get("Content-Length","0") or 0)
-                if length>MAX_DOWNLOAD_BYTES: raise RuntimeError(f"Video {vid} exceeds 200 MB limit.")
-                total=0
-                with target.open("wb") as out:
-                    for chunk in media.iter_content(1024*1024):
-                        if not chunk: continue
-                        total+=len(chunk)
-                        if total>MAX_DOWNLOAD_BYTES:
-                            target.unlink(missing_ok=True)
-                            raise RuntimeError(f"Video {vid} exceeds 200 MB limit.")
-                        out.write(chunk)
-                if total<100_000:
-                    target.unlink(missing_ok=True)
-                    print(f"SKIP {vid}: downloaded file is too small.")
+        candidates=[]
+        for entry in entries:
+            if not entry: continue
+            video_id=str(entry.get("id") or "").strip()
+            if not video_id or video_id in known: continue
+            views=int(entry.get("view_count") or 0)
+            likes=int(entry.get("like_count") or 0)
+            comments=int(entry.get("comment_count") or 0)
+            score=(max(views,0)**0.35)*(1+min((likes+2*comments)/max(views,1),1.0)*5)
+            url=entry.get("url") or entry.get("webpage_url") or f"https://www.tiktok.com/@{username}/video/{video_id}"
+            candidates.append((score,video_id,url,views,likes,comments,entry.get("title") or "Creator video"))
+        candidates.sort(reverse=True,key=lambda x:x[0])
+        for _,video_id,url,views,likes,comments,title in candidates[:VIDEOS_PER_ACCOUNT]:
+            safe_id=re.sub(r"[^A-Za-z0-9_-]","_",f"{username}_{video_id}")
+            outtmpl=str(INBOX/(safe_id+".%(ext)s"))
+            try:
+                dl_opts={"quiet":True,"no_warnings":True,"noplaylist":True,"format":"best",
+                         "outtmpl":outtmpl,"max_filesize":MAX_DOWNLOAD_BYTES,"socket_timeout":45}
+                with YoutubeDL(dl_opts) as ydl:
+                    video_info=ydl.extract_info(url,download=True)
+                    filepath=Path(ydl.prepare_filename(video_info))
+                if not filepath.exists() or filepath.suffix.lower() not in VIDEO_EXTENSIONS or filepath.stat().st_size<100_000:
+                    print(f"[{username}] SKIP {video_id}: unsupported, missing, or too-small video.")
+                    filepath.unlink(missing_ok=True)
                     continue
-        item={
-            "id":vid,"file":str(target.relative_to(ROOT)),"source_username":source,
-            "title":str(entry.get("title") or "Creator video"),
-            "views":int(entry.get("views",0) or 0),"likes":int(entry.get("likes",0) or 0),
-            "comments":int(entry.get("comments",0) or 0),"permission_granted":True,
-            "attribution":str(entry.get("attribution") or f"Shared with permission by @{source}"),
-            "hashtags":entry.get("hashtags") or TAGS,
-            "source_url":str(entry.get("source_url") or "")
-        }
-        manifest.setdefault("videos",[]).append(item)
-        known.add(vid); added+=1
+                item={"id":video_id,"file":str(filepath.relative_to(ROOT)),"source_username":username,
+                      "title":str(title),"views":views,"likes":likes,"comments":comments,
+                      "permission_granted":True,
+                      "attribution":f"Creator video from @{username}",
+                      "hashtags":TAGS,"source_url":str(url)}
+                manifest.setdefault("videos",[]).append(item)
+                known.add(video_id); added+=1
+            except Exception as exc:
+                print(f"[{username}] Could not download {video_id}: {exc}")
     MANIFEST.parent.mkdir(parents=True,exist_ok=True)
     MANIFEST.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-    print(f"Authorized source feed: imported {added} new video(s); original formats preserved.")
+    print(f"Account scan complete: imported {added} video(s); downloaded formats are kept as provided.")
 
 def choose_video():
     manifest=read_json(MANIFEST,{"videos":[]})
@@ -110,7 +99,7 @@ def choose_video():
         candidates.append((score,item,media))
     if not candidates:
         print("SKIP: No eligible creator-authorized video is available.")
-        print("Add an authorized feed endpoint or upload an original video and list it in creator_videos/manifest.json.")
+        print("Enable account fetching or add a permitted original video to creator_videos/manifest.json.")
         print("No Buffer post was created and no posting history was changed.")
         return None,None,state
     last=state.get("last_account")
@@ -120,7 +109,7 @@ def choose_video():
     return pool[0][1],pool[0][2],state
 
 def main():
-    fetch_authorized_feed()
+    fetch_account_videos()
     if os.getenv("ENABLE_BUFFER_POSTING","true").lower() not in {"1","true","yes","on"}:
         print("Buffer posting is OFF (workflow input); videos were not queued.")
         return 0
@@ -167,7 +156,7 @@ def main():
     state["last_post_id"]=post.get("id")
     STATE.parent.mkdir(parents=True,exist_ok=True)
     STATE.write_text(json.dumps(state,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-    print(f"Queued authorized video {item['id']} from @{source}; Buffer post {post.get('id')}.")
+    print(f"Queued creator video {item['id']} from @{source}; Buffer post {post.get('id')}.")
     return 0
 
 if __name__=="__main__":
