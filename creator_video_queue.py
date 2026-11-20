@@ -33,7 +33,11 @@ def choose_video():
         engagement=(likes+2*comments)/max(views,1)
         score=(views**0.35)*(1+min(engagement,1.0)*5)
         candidates.append((score,item,media))
-    if not candidates: raise RuntimeError("No eligible creator video. Add a creator-authorized MP4 and manifest entry with permission_granted=true.")
+    if not candidates:
+        print("SKIP: No eligible creator-authorized video is available.")
+        print("Add an authorized MP4 under creator_videos/ and a matching manifest entry with permission_granted=true.")
+        print("No Buffer post was created and no posting history was changed.")
+        return None, None, state
     last=state.get("last_account")
     # Rotate accounts when possible; within the eligible rotation choose the strongest engagement/reach score.
     fresh=[x for x in candidates if x[1].get("source_username") != last]
