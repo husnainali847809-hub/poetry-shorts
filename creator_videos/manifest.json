@@ -1,0 +1,16 @@
+{
+  "videos": [
+    {
+      "id": "replace-with-unique-video-id",
+      "file": "creator_videos/your-video.mp4",
+      "source_username": "jawad..382",
+      "title": "Creator video",
+      "views": 0,
+      "likes": 0,
+      "comments": 0,
+      "permission_granted": false,
+      "attribution": "Shared with permission by @jawad..382",
+      "hashtags": ["#ShortVideos", "#CreatorContent", "#TrendingVideos", "#ForYou", "#Pulsenama"]
+    }
+  ]
+}
