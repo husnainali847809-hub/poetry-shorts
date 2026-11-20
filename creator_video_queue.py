@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Queue one creator-authorized short video to Buffer; never downloads from TikTok."""
-import json, os, random, re, subprocess, sys
+import json, mimetypes, os, re, subprocess, sys
 from pathlib import Path
 import requests
 
@@ -9,6 +9,8 @@ MANIFEST=ROOT/"creator_videos"/"manifest.json"
 STATE=ROOT/"creator_videos"/"posted.json"
 ACCOUNTS=["jawad..382","hmxii_","ain.poetic","mr_dark_shayari","blurry_abdullah","idealads_2.0","lost_632"]
 TAGS=["#ShortVideos","#TrendingVideos","#ViralClips","#CreatorContent","#ForYou","#Pulsenama"]
+# Keep creator-provided files in their original format; no forced MP4 conversion.
+VIDEO_EXTENSIONS={".mp4",".mov",".m4v",".webm",".mkv",".avi",".mpeg",".mpg",".3gp",".ts",".mts",".m2ts",".wmv",".flv"}
 
 def read_json(path, default):
     if not path.exists(): return default
@@ -22,10 +24,14 @@ def choose_video():
     for item in manifest.get("videos",[]):
         vid=str(item.get("id","")).strip()
         source=str(item.get("source_username","")).lstrip("@")
-        media=ROOT/item.get("file","")
+        relative_file=str(item.get("file","")).strip()
         if not vid or vid in posted or source not in ACCOUNTS: continue
         if item.get("permission_granted") is not True: continue
-        if not media.is_file() or media.suffix.lower() not in {".mp4",".mov",".m4v"}: continue
+        if not relative_file: continue
+        media=(ROOT/relative_file).resolve()
+        media_root=(ROOT/"creator_videos").resolve()
+        if media_root not in media.parents: continue
+        if not media.is_file() or media.suffix.lower() not in VIDEO_EXTENSIONS: continue
         if media.stat().st_size < 100_000: continue
         views=max(0,int(item.get("views",0) or 0))
         likes=max(0,int(item.get("likes",0) or 0))
@@ -35,7 +41,8 @@ def choose_video():
         candidates.append((score,item,media))
     if not candidates:
         print("SKIP: No eligible creator-authorized video is available.")
-        print("Add an authorized MP4 under creator_videos/ and a matching manifest entry with permission_granted=true.")
+        print("Add an authorized video under creator_videos/ in its original supported format, with a matching manifest entry and permission_granted=true.")
+        print("Supported formats: " + ", ".join(sorted(VIDEO_EXTENSIONS)))
         print("No Buffer post was created and no posting history was changed.")
         return None, None, state
     last=state.get("last_account")
@@ -52,6 +59,8 @@ def main():
         print("Buffer skipped: BUFFER_API_KEY / BUFFER_CHANNEL_ID are not configured.")
         return 0
     item,media,state=choose_video()
+    if item is None:
+        return 0
     source=item["source_username"]
     title=str(item.get("title") or "Creator video").strip()
     attribution=str(item.get("attribution") or f"Video shared with permission by @{source}").strip()
@@ -60,6 +69,7 @@ def main():
     while len(hashtags)<5: hashtags.append(TAGS[len(hashtags)])
     caption="\n".join([title,attribution," ".join(hashtags)])
     tag=f"creator-video-{re.sub(r'[^a-zA-Z0-9-]','-',str(item['id']))}"
+    # Upload the original file unchanged; keep its original extension and container.
     subprocess.run(["gh","release","create",tag,str(media),"--title",title[:100],"--notes",attribution],check=True)
     repo=os.getenv("GITHUB_REPOSITORY","")
     url=f"https://github.com/{repo}/releases/download/{tag}/{media.name}"
