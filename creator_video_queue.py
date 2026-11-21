@@ -11,7 +11,8 @@ STATE=ROOT/"creator_videos"/"posted.json"
 INBOX=ROOT/"creator_videos"/"inbox"
 ACCOUNTS=["jawad..382","hmxii_","ain.poetic","mr_dark_shayari","blurry_abdullah","idealads_2.0","lost_632"]
 # The repository owner has confirmed repost permission for the seven configured creators.
-AUTHORIZED_ACCOUNTS={x.strip().lstrip("@") for x in os.getenv("AUTHORIZED_CREATOR_ACCOUNTS", ",".join(ACCOUNTS)).split(",") if x.strip()}
+_authorized_env=os.getenv("AUTHORIZED_CREATOR_ACCOUNTS","").strip()
+AUTHORIZED_ACCOUNTS={x.strip().lstrip("@") for x in (_authorized_env or ",".join(ACCOUNTS)).split(",") if x.strip()}
 TAGS=["#ShortVideos","#TrendingVideos","#ViralClips","#CreatorContent","#ForYou","#Pulsenama"]
 VIDEO_EXTENSIONS={".mp4",".mov",".m4v",".webm",".mkv",".avi",".mpeg",".mpg",".3gp",".ts",".mts",".m2ts",".wmv",".flv"}
 MAX_DOWNLOAD_BYTES=200*1024*1024
