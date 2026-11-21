@@ -1,52 +1,38 @@
-# Pulsenama — AI Poetry Video Creator
+# Creator Video Fetch & Buffer Auto-Publishing
 
-Pulsenama automatically creates short vertical poetry videos in Urdu, Roman Urdu, and English.
+This repository now contains only the creator-video ingestion and Buffer queueing system.
 
 ## What it does
 
-- Chooses the mood, language, and duration automatically.
-- Generates a short 2–3 line poem, with a built-in poem fallback when the AI response is unavailable.
-- Finds a mood-matched portrait video or photo for the background.
-- Searches Wikimedia Commons for a licensed human recording that matches the actual displayed poem text, not merely the same language or a generic poetry keyword.
-- When an exact-text recording is found, places it clearly in the foreground and mixes a quiet, original piano-and-strings instrumental underneath.
-- Never generates an AI speaking voice or substitutes an unrelated recitation/song. If no licensed human recording matching the displayed poem is found, generation stops and no instrumental-only video is published.
-- Renders a 1080×1920 MP4 and a text/attribution file.
-- Creates a Buffer caption in the poem's language, adds a short mood-matched line, and includes relevant Urdu or English hashtags automatically.
+1. Scans the seven creator profiles configured in `creator_video_queue.py` when source fetching is enabled.
+2. Reads available video metadata and ranks candidate videos by views and engagement.
+3. Downloads eligible videos without transcoding, preserving the downloaded source format.
+4. Skips video IDs already recorded in `creator_videos/posted.json`.
+5. Hosts the selected video in a GitHub Release.
+6. Builds a caption with attribution and hashtags, then adds the video to the configured Buffer channel queue.
+7. Saves posting history only after Buffer confirms that the post was queued.
 
-## Automatic schedule
+Only repost videos when the creator has explicitly authorized their use. The workflow does not bypass private-account restrictions or access controls.
 
-Five daily Pakistan-time slots (UTC+5):
-- 09:00 — Islamic bayan video (Urdu; audio selected only from `music/bayan/`)
-- 12:00 — Urdu poetry
-- 15:00 — Punjabi poetry
-- 18:00 — Urdu poetry
-- 21:00 — English poetry
+## Schedule
 
-GitHub may start scheduled jobs a little later than the exact cron time. Generated videos are added to the configured Buffer queue, which publishes according to the channel's Buffer queue schedule.
+The GitHub Actions workflow runs daily at 02:00 UTC (07:00 Pakistan time), and can also be started manually from **Actions → Authorized Creator Video Queue → Run workflow**.
 
-## Islamic bayan videos
+The scheduled workflow uses repository variables:
+- `ENABLE_ACCOUNT_SOURCE_FETCH` — set to `true` to enable scanning the configured creator profiles.
+- `ENABLE_BUFFER_POSTING` — set to `true` to enable Buffer queueing (defaults to true).
 
-The 09:00 Pakistan-time workflow creates one short Urdu Islamic reminder video daily. It randomly selects a usable audio file from `music/bayan/`, generates original devotional wording, and sends the video through the same Buffer publishing flow. The text generator is instructed not to invent Quran or Hadith quotations, references, or religious rulings. Keep bayan audio separate from poetry music folders, and only upload audio you have permission to use.
+Manual runs provide separate switches for fetching and posting.
 
-## Captions and hashtags
+## Required repository secrets
 
-Every Buffer post now includes the poem title and lines, a short mood-matched caption, a follow prompt in the same language, and relevant hashtags. Urdu posts use Urdu captions and Urdu hashtags; English posts use English captions and English hashtags. Hashtags also vary by the selected mood.
+- `BUFFER_API_KEY` — Buffer API key.
+- `BUFFER_CHANNEL_ID` — destination Buffer channel ID.
 
-## Buffer setup
+## Python dependencies
 
-Add these repository Actions secrets:
+Install with:
 
-- `BUFFER_API_KEY` — your Buffer API key.
-- `BUFFER_CHANNEL_ID` — the Buffer channel where videos should be queued.
-
-When both are configured, each generated video is sent to that channel using Buffer's **Add to Queue** mode. Buffer then uses the channel's configured queue schedule. If either secret is missing, video generation still completes and the workflow logs that Buffer publishing was skipped.
-
-## Other required secrets
-
-- `OPENROUTER_API_KEY` — AI poem generation.
-- `PEXELS_API_KEY` — Pexels video/photo search (optional).
-- `PIXABAY_API_KEY` — Pixabay video/photo search (optional).
-
-## Generated files
-
-The workflow stores `poetry_demo.mp4` and `poetry_demo.txt` as downloadable workflow artifacts for 7 days. The MP4 is also attached to a public GitHub Release to provide Buffer with a publicly accessible media URL.
+```bash
+pip install -r requirements.txt
+```
