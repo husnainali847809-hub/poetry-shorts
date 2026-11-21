@@ -2,17 +2,6 @@ name: Authorized Creator Video Queue
 
 on:
   workflow_dispatch:
-    inputs:
-      enable_account_source_fetch:
-        description: "Enable direct scanning of the seven listed creator profiles"
-        required: true
-        type: boolean
-        default: false
-      enable_buffer_posting:
-        description: "Enable Buffer queueing"
-        required: true
-        type: boolean
-        default: true
   schedule:
     - cron: "0 4,8,12,16 * * *" # 9 AM, 1 PM, 5 PM, 9 PM Pakistan time (UTC+5)
 
@@ -41,8 +30,8 @@ jobs:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
           AUTHORIZED_CREATOR_ACCOUNTS: ${{ vars.AUTHORIZED_CREATOR_ACCOUNTS || '' }}
-          ENABLE_ACCOUNT_SOURCE_FETCH: ${{ github.event_name == 'workflow_dispatch' && (inputs.enable_account_source_fetch && 'true' || 'false') || vars.ENABLE_ACCOUNT_SOURCE_FETCH || 'false' }}
-          ENABLE_BUFFER_POSTING: ${{ github.event_name == 'workflow_dispatch' && (inputs.enable_buffer_posting && 'true' || 'false') || vars.ENABLE_BUFFER_POSTING || 'true' }}
+          ENABLE_ACCOUNT_SOURCE_FETCH: "true"
+          ENABLE_BUFFER_POSTING: "true"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
