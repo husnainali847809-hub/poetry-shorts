@@ -72,7 +72,6 @@ def fetch_account_videos():
                 item={"id":video_id,"file":str(filepath.relative_to(ROOT)),"source_username":username,
                       "title":str(title),"views":views,"likes":likes,"comments":comments,
                       "permission_granted":True,
-                      "attribution":f"Shared with permission by @{username}",
                       "hashtags":TAGS,"source_url":str(url)}
                 manifest.setdefault("videos",[]).append(item)
                 known.add(video_id); added+=1
@@ -100,6 +99,9 @@ def choose_video():
         likes=max(0,int(item.get("likes",0) or 0))
         comments=max(0,int(item.get("comments",0) or 0))
         engagement=(likes+2*comments)/max(views,1)
+        # Filter weak-performing posts before they can enter the queue.
+        if views < int(os.getenv("MIN_VIDEO_VIEWS","1000")): continue
+        if engagement < float(os.getenv("MIN_VIDEO_ENGAGEMENT","0.015")): continue
         score=(views**0.35)*(1+min(engagement,1.0)*5)
         candidates.append((score,item,media))
     if not candidates:
@@ -140,10 +142,10 @@ def main():
     if item is None: return 0
     source=item["source_username"]
     title=str(item.get("title") or "Creator video").strip()
-    attribution=str(item.get("attribution") or f"Video shared with permission by @{source}").strip()
     hashtags=[("#"+str(t).lstrip("#")) for t in (item.get("hashtags") or TAGS) if str(t).strip()][:6]
     while len(hashtags)<5: hashtags.append(TAGS[len(hashtags)])
-    caption="\n".join([title,attribution," ".join(hashtags)])
+    # Caption contains the video title and hashtags only; no creator attribution.
+    caption="\n".join([title," ".join(hashtags)])
     tag=f"creator-video-{re.sub(r'[^a-zA-Z0-9-]','-',str(item['id']))}"
     # Reuse an existing release when a previous run created it but Buffer failed.
     release_exists=subprocess.run(["gh","release","view",tag],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
@@ -151,7 +153,7 @@ def main():
         subprocess.run(["gh","release","upload",tag,str(media),"--clobber"],check=True)
         print(f"Reused existing GitHub release: {tag}")
     else:
-        subprocess.run(["gh","release","create",tag,str(media),"--title",title[:100],"--notes",attribution],check=True)
+        subprocess.run(["gh","release","create",tag,str(media),"--title",title[:100],"--notes",""],check=True)
     repo=os.getenv("GITHUB_REPOSITORY","")
     url=f"https://github.com/{repo}/releases/download/{tag}/{media.name}"
     query=f"""
