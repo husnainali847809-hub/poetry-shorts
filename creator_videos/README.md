@@ -1,16 +1,17 @@
 # Creator video queue
 
-Open **Actions → Authorized Creator Video Queue → Run workflow**.
+The repository's only automation is the authorized creator-video fetch and Buffer queue.
 
-- **Enable account source fetch**: scans the seven configured public creator profiles directly. No external feed URL or feed token is required.
-- **Enable Buffer posting**: turn ON to queue one eligible video to Buffer.
+## Required GitHub Actions settings
 
-## Required GitHub Actions secrets
+Repository variables:
+- `ENABLE_ACCOUNT_SOURCE_FETCH=true` to scan creator profiles on the scheduled run.
+- `ENABLE_BUFFER_POSTING=true` to allow Buffer queueing.
+- `AUTHORIZED_CREATOR_ACCOUNTS` — comma-separated usernames for which you have explicit permission to repost. Only these configured accounts are scanned and eligible for posting.
 
+Repository secrets:
 - `BUFFER_API_KEY`
 - `BUFFER_CHANNEL_ID`
-
-No `CREATOR_SOURCE_FEED_URL` or `CREATOR_SOURCE_FEED_TOKEN` secrets are used.
 
 ## Configured creator profiles
 
@@ -22,8 +23,6 @@ No `CREATOR_SOURCE_FEED_URL` or `CREATOR_SOURCE_FEED_TOKEN` secrets are used.
 - `idealads_2.0`
 - `lost_632`
 
-The workflow attempts to read publicly available profile/video information with yt-dlp. Platform restrictions, login requirements, rate limits, deleted/private videos, or format changes can prevent a profile from being read or a video from downloading. It does not bypass private-account restrictions or access controls. Use this only for videos whose owners have explicitly authorized reposting. Downloaded files are not transcoded; the source format is retained. Previously queued video IDs are skipped, and a video is marked posted only after Buffer confirms queue creation.
+The system ranks available videos by views and engagement, preserves the downloaded source format without transcoding, skips previously posted IDs, and records a video as posted only after Buffer confirms queue creation.
 
-## Buffer setup
-
-Add `BUFFER_API_KEY` and `BUFFER_CHANNEL_ID` under **Settings → Secrets and variables → Actions → New repository secret**.
+**Permission safeguard:** a public profile is not proof of repost permission. The system will not scan or queue an account unless its username is explicitly included in `AUTHORIZED_CREATOR_ACCOUNTS`. It does not bypass private-account restrictions or access controls.
