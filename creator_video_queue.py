@@ -105,11 +105,24 @@ def choose_video():
         print("Enable account fetching or add a permitted original video to creator_videos/manifest.json.")
         print("No Buffer post was created and no posting history was changed.")
         return None,None,state
+    # Round-robin by creator account: never choose the same account on consecutive successful queues
+    # when another configured account has an eligible, permission-approved video.
     last=state.get("last_account")
-    fresh=[x for x in candidates if x[1].get("source_username")!=last]
-    pool=fresh or candidates
-    pool.sort(key=lambda x:x[0],reverse=True)
-    return pool[0][1],pool[0][2],state
+    if last in ACCOUNTS:
+        offset=ACCOUNTS.index(last)
+        account_order=ACCOUNTS[offset+1:]+ACCOUNTS[:offset+1]
+    else:
+        account_order=ACCOUNTS[:]
+    by_account={}
+    for score,item,media in candidates:
+        by_account.setdefault(item.get("source_username"),[]).append((score,item,media))
+    for account in account_order:
+        pool=by_account.get(account,[])
+        if pool:
+            pool.sort(key=lambda x:x[0],reverse=True)
+            return pool[0][1],pool[0][2],state
+    print("SKIP: No eligible creator-authorized video is available.")
+    return None,None,state
 
 def main():
     fetch_account_videos()
