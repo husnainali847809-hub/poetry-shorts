@@ -20,6 +20,7 @@ The GitHub Actions workflow runs daily at 02:00 UTC (07:00 Pakistan time), and c
 
 The scheduled workflow uses repository variables:
 - `ENABLE_ACCOUNT_SOURCE_FETCH` — set to `true` to enable scanning the configured creator profiles.
+- `AUTHORIZED_CREATOR_ACCOUNTS` — comma-separated usernames for which you have explicit repost permission. Only these accounts are scanned and eligible for Buffer queueing.
 - `ENABLE_BUFFER_POSTING` — set to `true` to enable Buffer queueing (defaults to true).
 
 Manual runs provide separate switches for fetching and posting.
