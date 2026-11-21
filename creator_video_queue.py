@@ -30,10 +30,9 @@ def fetch_account_videos():
     INBOX.mkdir(parents=True,exist_ok=True)
     added=0
     for username in ACCOUNTS:
-        if username not in AUTHORIZED_ACCOUNTS:
-            print(f"[{username}] SKIP: explicit repost authorization is not configured.")
-            continue
+        # Public profile URLs are used for discovery only. Discovery does not grant repost rights.
         profile=f"https://www.tiktok.com/@{username}"
+        print(f"[{username}] Scanning public profile: {profile}")
         opts={"quiet":True,"no_warnings":True,"extract_flat":"in_playlist","skip_download":True,
               "playlistend":20,"socket_timeout":25}
         try:
@@ -70,8 +69,8 @@ def fetch_account_videos():
                     continue
                 item={"id":video_id,"file":str(filepath.relative_to(ROOT)),"source_username":username,
                       "title":str(title),"views":views,"likes":likes,"comments":comments,
-                      "permission_granted":True,
-                      "attribution":f"Creator video from @{username}",
+                      "permission_granted":False,
+                      "attribution":f"Review required — source @{username}",
                       "hashtags":TAGS,"source_url":str(url)}
                 manifest.setdefault("videos",[]).append(item)
                 known.add(video_id); added+=1
