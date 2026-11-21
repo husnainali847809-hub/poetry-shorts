@@ -40,6 +40,7 @@ jobs:
         env:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
+          AUTHORIZED_CREATOR_ACCOUNTS: ${{ vars.AUTHORIZED_CREATOR_ACCOUNTS || '' }}
           ENABLE_ACCOUNT_SOURCE_FETCH: ${{ github.event_name == 'workflow_dispatch' && (inputs.enable_account_source_fetch && 'true' || 'false') || vars.ENABLE_ACCOUNT_SOURCE_FETCH || 'false' }}
           ENABLE_BUFFER_POSTING: ${{ github.event_name == 'workflow_dispatch' && (inputs.enable_buffer_posting && 'true' || 'false') || vars.ENABLE_BUFFER_POSTING || 'true' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
