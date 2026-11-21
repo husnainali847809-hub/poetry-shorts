@@ -10,6 +10,7 @@ MANIFEST=ROOT/"creator_videos"/"manifest.json"
 STATE=ROOT/"creator_videos"/"posted.json"
 INBOX=ROOT/"creator_videos"/"inbox"
 ACCOUNTS=["jawad..382","hmxii_","ain.poetic","mr_dark_shayari","blurry_abdullah","idealads_2.0","lost_632"]
+AUTHORIZED_ACCOUNTS={x.strip().lstrip("@") for x in os.getenv("AUTHORIZED_CREATOR_ACCOUNTS","").split(",") if x.strip()}
 TAGS=["#ShortVideos","#TrendingVideos","#ViralClips","#CreatorContent","#ForYou","#Pulsenama"]
 VIDEO_EXTENSIONS={".mp4",".mov",".m4v",".webm",".mkv",".avi",".mpeg",".mpg",".3gp",".ts",".mts",".m2ts",".wmv",".flv"}
 MAX_DOWNLOAD_BYTES=200*1024*1024
@@ -29,6 +30,9 @@ def fetch_account_videos():
     INBOX.mkdir(parents=True,exist_ok=True)
     added=0
     for username in ACCOUNTS:
+        if username not in AUTHORIZED_ACCOUNTS:
+            print(f"[{username}] SKIP: explicit repost authorization is not configured.")
+            continue
         profile=f"https://www.tiktok.com/@{username}"
         opts={"quiet":True,"no_warnings":True,"extract_flat":"in_playlist","skip_download":True,
               "playlistend":20,"socket_timeout":25}
@@ -86,7 +90,7 @@ def choose_video():
         vid=str(item.get("id","")).strip()
         source=str(item.get("source_username","")).lstrip("@")
         relative_file=str(item.get("file","")).strip()
-        if not vid or vid in posted or source not in ACCOUNTS: continue
+        if not vid or vid in posted or source not in ACCOUNTS or source not in AUTHORIZED_ACCOUNTS: continue
         if item.get("permission_granted") is not True or not relative_file: continue
         media=(ROOT/relative_file).resolve()
         if ROOT.resolve() not in media.parents: continue
