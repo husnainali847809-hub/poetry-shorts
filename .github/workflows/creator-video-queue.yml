@@ -14,7 +14,7 @@ on:
         type: boolean
         default: true
   schedule:
-    - cron: "0 2 * * *" # 7 AM Pakistan time
+    - cron: "0 4,8,12,16 * * *" # 9 AM, 1 PM, 5 PM, 9 PM Pakistan time (UTC+5)
 
 permissions:
   contents: write
