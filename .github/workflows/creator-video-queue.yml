@@ -3,7 +3,8 @@ name: Authorized Creator Video Queue
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 4,8,12,16 * * *" # 9 AM, 1 PM, 5 PM, 9 PM Pakistan time (UTC+5)
+    # Start two hours before the intended Buffer queue slots (Pakistan time).
+    - cron: "0 2,6,10,14 * * *" # 7 AM, 11 AM, 3 PM, 7 PM PKT
 
 permissions:
   contents: write
