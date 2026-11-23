@@ -4,15 +4,15 @@ This repository now contains only the creator-video ingestion and Buffer queuein
 
 ## What it does
 
-1. Scans the seven creator profiles configured in `creator_video_queue.py` when source fetching is enabled.
-2. Reads available video metadata and ranks candidate videos by views and engagement.
+1. Scans these seven configured TikTok profiles: `khudserabtak`, `sultan_editx00`, `satisfyingbytiktok`, `ismail_wri8s_6`, `haya_aesticxs`, `hammadeditz_09`, and `aesthatic_creator`.
+2. Reads available video metadata, filters weak-performing candidates, and randomly selects an eligible video (avoiding the previous creator when alternatives exist).
 3. Downloads eligible videos without transcoding, preserving the downloaded source format.
 4. Skips video IDs already recorded in `creator_videos/posted.json`.
 5. Hosts the selected video in a GitHub Release.
-6. Builds a caption with attribution and hashtags, then adds the video to the configured Buffer channel queue.
+6. Builds a caption with the video title and hashtags only; creator usernames, source links, and attribution are excluded. Then adds the video to the configured Buffer channel queue.
 7. Saves posting history only after Buffer confirms that the post was queued.
 
-Only repost videos when the creator has explicitly authorized their use. The workflow does not bypass private-account restrictions or access controls.
+The configured creators have been confirmed by the repository owner as authorized sources. The workflow does not bypass private-account restrictions or access controls.
 
 ## Schedule
 
@@ -20,7 +20,6 @@ The GitHub Actions workflow runs daily at 02:00 UTC (07:00 Pakistan time), and c
 
 The scheduled workflow uses repository variables:
 - `ENABLE_ACCOUNT_SOURCE_FETCH` — set to `true` to enable scanning the configured creator profiles.
-- `AUTHORIZED_CREATOR_ACCOUNTS` — comma-separated usernames for which you have explicit repost permission. Only these accounts are scanned and eligible for Buffer queueing.
 - `ENABLE_BUFFER_POSTING` — set to `true` to enable Buffer queueing (defaults to true).
 
 Manual runs provide separate switches for fetching and posting.
