@@ -133,11 +133,11 @@ def main():
     title=re.sub(r"@[A-Za-z0-9._]+","",title)
     for username in ACCOUNTS:
         title=re.sub(re.escape(username),"",title,flags=re.IGNORECASE)
-    title=re.sub(r"\\s+"," ",title).strip(" -|•")
+    title=re.sub(r"\s+"," ",title).strip(" -|•")
     if not title: title="Trending video"
     hashtags=[("#"+str(t).lstrip("#")) for t in (item.get("hashtags") or TAGS) if str(t).strip()][:6]
     while len(hashtags)<5: hashtags.append(TAGS[len(hashtags)])
-    caption="\\n".join([title," ".join(hashtags)])
+    caption="\n".join([title," ".join(hashtags)])
     tag=f"creator-video-{re.sub(r'[^a-zA-Z0-9-]','-',str(item['id']))}"
     # Reuse an existing release when a previous run created it but Buffer failed.
     release_exists=subprocess.run(["gh","release","view",tag],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
