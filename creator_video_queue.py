@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fetch videos from the configured creator accounts (opt-in) and queue one to Buffer."""
-import json, os, re, subprocess, sys
+import json, os, random, re, subprocess, sys
 from pathlib import Path
 import requests
 from yt_dlp import YoutubeDL
@@ -9,10 +9,9 @@ ROOT=Path(__file__).resolve().parent
 MANIFEST=ROOT/"creator_videos"/"manifest.json"
 STATE=ROOT/"creator_videos"/"posted.json"
 INBOX=ROOT/"creator_videos"/"inbox"
-ACCOUNTS=["jawad..382","hmxii_","ain.poetic","mr_dark_shayari","blurry_abdullah","idealads_2.0","lost_632"]
-# The repository owner has confirmed repost permission for the seven configured creators.
-_authorized_env=os.getenv("AUTHORIZED_CREATOR_ACCOUNTS","").strip()
-AUTHORIZED_ACCOUNTS={x.strip().lstrip("@") for x in (_authorized_env or ",".join(ACCOUNTS)).split(",") if x.strip()}
+ACCOUNTS=["khudserabtak","sultan_editx00","satisfyingbytiktok","ismail_wri8s_6","haya_aesticxs","hammadeditz_09","aesthatic_creator"]
+# The repository owner confirmed repost permission for these configured creators.
+AUTHORIZED_ACCOUNTS=set(ACCOUNTS)
 TAGS=["#ShortVideos","#TrendingVideos","#ViralClips","#CreatorContent","#ForYou","#Pulsenama"]
 VIDEO_EXTENSIONS={".mp4",".mov",".m4v",".webm",".mkv",".avi",".mpeg",".mpg",".3gp",".ts",".mts",".m2ts",".wmv",".flv"}
 MAX_DOWNLOAD_BYTES=200*1024*1024
@@ -109,24 +108,12 @@ def choose_video():
         print("Enable account fetching or add a permitted original video to creator_videos/manifest.json.")
         print("No Buffer post was created and no posting history was changed.")
         return None,None,state
-    # Round-robin by creator account: never choose the same account on consecutive successful queues
-    # when another configured account has an eligible, permission-approved video.
+    # Pick a random eligible video; avoid the previous creator when alternatives exist.
     last=state.get("last_account")
-    if last in ACCOUNTS:
-        offset=ACCOUNTS.index(last)
-        account_order=ACCOUNTS[offset+1:]+ACCOUNTS[:offset+1]
-    else:
-        account_order=ACCOUNTS[:]
-    by_account={}
-    for score,item,media in candidates:
-        by_account.setdefault(item.get("source_username"),[]).append((score,item,media))
-    for account in account_order:
-        pool=by_account.get(account,[])
-        if pool:
-            pool.sort(key=lambda x:x[0],reverse=True)
-            return pool[0][1],pool[0][2],state
-    print("SKIP: No eligible creator-authorized video is available.")
-    return None,None,state
+    alternatives=[candidate for candidate in candidates if candidate[1].get("source_username") != last]
+    pool=alternatives or candidates
+    _,chosen_item,chosen_media=random.choice(pool)
+    return chosen_item,chosen_media,state
 
 def main():
     fetch_account_videos()
@@ -141,11 +128,16 @@ def main():
     item,media,state=choose_video()
     if item is None: return 0
     source=item["source_username"]
-    title=str(item.get("title") or "Creator video").strip()
+    title=str(item.get("title") or "Trending video").strip()
+    # Never expose creator usernames, @handles, source URLs, or attribution in the Facebook caption.
+    title=re.sub(r"@[A-Za-z0-9._]+","",title)
+    for username in ACCOUNTS:
+        title=re.sub(re.escape(username),"",title,flags=re.IGNORECASE)
+    title=re.sub(r"\\s+"," ",title).strip(" -|•")
+    if not title: title="Trending video"
     hashtags=[("#"+str(t).lstrip("#")) for t in (item.get("hashtags") or TAGS) if str(t).strip()][:6]
     while len(hashtags)<5: hashtags.append(TAGS[len(hashtags)])
-    # Caption contains the video title and hashtags only; no creator attribution.
-    caption="\n".join([title," ".join(hashtags)])
+    caption="\\n".join([title," ".join(hashtags)])
     tag=f"creator-video-{re.sub(r'[^a-zA-Z0-9-]','-',str(item['id']))}"
     # Reuse an existing release when a previous run created it but Buffer failed.
     release_exists=subprocess.run(["gh","release","view",tag],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
