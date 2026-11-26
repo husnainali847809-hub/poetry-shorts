@@ -1,13 +1,13 @@
 {
   "accounts": [
-    "jawad..382",
-    "hmxii_",
-    "ain.poetic",
-    "mr_dark_shayari",
-    "blurry_abdullah",
-    "idealads_2.0",
-    "lost_632"
+    "khudserabtak",
+    "sultan_editx00",
+    "satisfyingbytiktok",
+    "ismail_wri8s_6",
+    "haya_aesticxs",
+    "hammadeditz_09",
+    "aesthatic_creator"
   ],
-  "selection": "Rotate across eligible accounts; rank creator-supplied metrics by reach and engagement.",
-  "ingestion": "Only add video files supplied by the creator or otherwise explicitly authorized for reposting. No TikTok scraping or watermark removal."
+  "selection": "Rank available videos using views and engagement; rotate away from the previous creator when possible.",
+  "ingestion": "Public profile discovery only; do not bypass private-account restrictions or access controls. Repost only content for which permission has been granted."
 }
