@@ -1,38 +1,50 @@
-# Creator Video Fetch & Buffer Auto-Publishing
+# Authorized Creator Video Queue
 
-This repository now contains only the creator-video ingestion and Buffer queueing system.
+This repository runs the TikTok creator-profile ingestion and Buffer queueing system only.
 
-## What it does
+## Daily schedule
 
-1. Scans these seven configured TikTok profiles: `khudserabtak`, `sultan_editx00`, `satisfyingbytiktok`, `ismail_wri8s_6`, `haya_aesticxs`, `hammadeditz_09`, and `aesthatic_creator`.
-2. Reads available video metadata, filters weak-performing candidates, and randomly selects an eligible video (avoiding the previous creator when alternatives exist).
-3. Downloads eligible videos without transcoding, preserving the downloaded source format.
-4. Skips video IDs already recorded in `creator_videos/posted.json`.
-5. Hosts the selected video in a GitHub Release.
-6. Builds a caption with the video title and hashtags only; creator usernames, source links, and attribution are excluded. Then adds the video to the configured Buffer channel queue.
-7. Saves posting history only after Buffer confirms that the post was queued.
+GitHub Actions runs four times daily (Pakistan Standard Time):
+- 07:00
+- 11:00
+- 15:00
+- 19:00
 
-The configured creators have been confirmed by the repository owner as authorized sources. The workflow does not bypass private-account restrictions or access controls.
+Each successful run selects and queues one video to the configured Buffer channel. Buffer's own queue schedule determines the exact publication time.
 
-## Schedule
+## Creator profiles
 
-The GitHub Actions workflow runs daily at 02:00 UTC (07:00 Pakistan time), and can also be started manually from **Actions → Authorized Creator Video Queue → Run workflow**.
+The active configured profiles are:
+- `khudserabtak`
+- `sultan_editx00`
+- `satisfyingbytiktok`
+- `ismail_wri8s_6`
+- `haya_aesticxs`
+- `hammadeditz_09`
+- `aesthatic_creator`
 
-The scheduled workflow uses repository variables:
-- `ENABLE_ACCOUNT_SOURCE_FETCH` — set to `true` to enable scanning the configured creator profiles.
-- `ENABLE_BUFFER_POSTING` — set to `true` to enable Buffer queueing (defaults to true).
+The workflow scans public profile videos, ranks available candidates using views and engagement, and rotates away from the previous creator when another eligible creator is available. It does not bypass private-account restrictions or access controls. Only repost content for which the account owner has permission.
 
-Manual runs provide separate switches for fetching and posting.
+## Download and duplicate handling
 
-## Required repository secrets
+- Downloads are kept in the source format; no transcoding is performed.
+- Posted IDs are stored in `creator_videos/posted.json`.
+- GitHub Actions runners are temporary. If a manifest entry points to a video file that is not present on the new runner, the workflow downloads that video again instead of permanently treating it as available.
+- The workflow skips IDs already confirmed in Buffer posting history.
+- The selected video is hosted as a GitHub Release asset before it is sent to Buffer.
+- Posting history is updated only after Buffer confirms the queue operation.
 
-- `BUFFER_API_KEY` — Buffer API key.
-- `BUFFER_CHANNEL_ID` — destination Buffer channel ID.
+## Buffer configuration
 
-## Python dependencies
+Add these repository Actions secrets:
+- `BUFFER_API_KEY`
+- `BUFFER_CHANNEL_ID`
 
-Install with:
+The workflow enables profile fetching and Buffer queueing automatically. It does not need manual workflow switches.
+
+## Local setup
 
 ```bash
 pip install -r requirements.txt
+python creator_video_queue.py
 ```
