@@ -3,8 +3,8 @@ name: Authorized Creator Video Queue
 on:
   workflow_dispatch:
   schedule:
-    # Start two hours before the intended Buffer queue slots (Pakistan time).
-    - cron: "0 2,6,10,14 * * *" # 7 AM, 11 AM, 3 PM, 7 PM PKT
+    # Four daily runs in Pakistan time: 07:00, 11:00, 15:00 and 19:00.
+    - cron: "0 2,6,10,14 * * *"
 
 permissions:
   contents: write
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   queue-creator-video:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,24 +25,25 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: python -m pip install requests yt-dlp
+        run: python -m pip install -r requirements.txt
       - name: Scan creator profiles and queue one video
         env:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
-          AUTHORIZED_CREATOR_ACCOUNTS: ${{ vars.AUTHORIZED_CREATOR_ACCOUNTS || '' }}
           ENABLE_ACCOUNT_SOURCE_FETCH: "true"
           ENABLE_BUFFER_POSTING: "true"
+          MIN_VIDEO_VIEWS: "0"
+          MIN_VIDEO_ENGAGEMENT: "0"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           gh auth setup-git
-          python creator_video_queue.py
-      - name: Save duplicate-prevention history and imported source manifest
-        if: success()
+          python -u creator_video_queue.py
+      - name: Save duplicate-prevention history and source manifest
+        if: always() && success()
         run: |
           if git diff --quiet -- creator_videos/posted.json creator_videos/manifest.json; then
-            echo "No new video was queued or imported."
+            echo "No posting state or manifest changes to save."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
