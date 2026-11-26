@@ -27,7 +27,19 @@ def fetch_account_videos():
         print("Account-source fetching is OFF (workflow input).")
         return
     manifest=read_json(MANIFEST,{"videos":[]})
-    known={str(x.get("id")) for x in manifest.get("videos",[])}
+    state=read_json(STATE,{"posted_ids":[]})
+    posted={str(x) for x in state.get("posted_ids",[])}
+    # Only treat a manifest entry as already downloaded when its local media file exists.
+    # GitHub-hosted runners are ephemeral, so old inbox files are not present on later runs.
+    known=set()
+    for old in manifest.get("videos",[]):
+        old_id=str(old.get("id") or "").strip()
+        old_file=str(old.get("file") or "").strip()
+        if not old_id or old_id in posted or not old_file: continue
+        old_path=(ROOT/old_file).resolve()
+        if ROOT.resolve() in old_path.parents and old_path.is_file() and old_path.stat().st_size>=100_000:
+            known.add(old_id)
+    existing_by_id={str(x.get("id")):x for x in manifest.get("videos",[]) if x.get("id")}
     INBOX.mkdir(parents=True,exist_ok=True)
     added=0
     for username in ACCOUNTS:
@@ -47,7 +59,7 @@ def fetch_account_videos():
         for entry in entries:
             if not entry: continue
             video_id=str(entry.get("id") or "").strip()
-            if not video_id or video_id in known: continue
+            if not video_id or video_id in known or video_id in posted: continue
             views=int(entry.get("view_count") or 0)
             likes=int(entry.get("like_count") or 0)
             comments=int(entry.get("comment_count") or 0)
@@ -68,11 +80,21 @@ def fetch_account_videos():
                     print(f"[{username}] SKIP {video_id}: unsupported, missing, or too-small video.")
                     filepath.unlink(missing_ok=True)
                     continue
+                # Prefer metrics returned by the full video extractor when flat profile metadata is incomplete.
+                views=int(video_info.get("view_count") or views or 0)
+                likes=int(video_info.get("like_count") or likes or 0)
+                comments=int(video_info.get("comment_count") or comments or 0)
+                title=str(video_info.get("title") or title or "Creator video")
                 item={"id":video_id,"file":str(filepath.relative_to(ROOT)),"source_username":username,
-                      "title":str(title),"views":views,"likes":likes,"comments":comments,
+                      "title":title,"views":views,"likes":likes,"comments":comments,
                       "permission_granted":True,
                       "hashtags":TAGS,"source_url":str(url)}
+                # Replace stale manifest metadata for the same ID instead of adding duplicates.
+                old=existing_by_id.get(video_id)
+                if old is not None:
+                    manifest["videos"].remove(old)
                 manifest.setdefault("videos",[]).append(item)
+                existing_by_id[video_id]=item
                 known.add(video_id); added+=1
             except Exception as exc:
                 print(f"[{username}] Could not download {video_id}: {exc}")
@@ -99,13 +121,15 @@ def choose_video():
         comments=max(0,int(item.get("comments",0) or 0))
         engagement=(likes+2*comments)/max(views,1)
         # Filter weak-performing posts before they can enter the queue.
-        if views < int(os.getenv("MIN_VIDEO_VIEWS","1000")): continue
-        if engagement < float(os.getenv("MIN_VIDEO_ENGAGEMENT","0.015")): continue
+        min_views=int(os.getenv("MIN_VIDEO_VIEWS","0"))
+        min_engagement=float(os.getenv("MIN_VIDEO_ENGAGEMENT","0"))
+        if views < min_views or engagement < min_engagement: continue
         score=(views**0.35)*(1+min(engagement,1.0)*5)
         candidates.append((score,item,media))
+    print(f"Eligible downloaded videos: {len(candidates)}")
     if not candidates:
-        print("SKIP: No eligible creator-authorized video is available.")
-        print("Enable account fetching or add a permitted original video to creator_videos/manifest.json.")
+        print("SKIP: No downloaded, unposted, creator-authorized video is available.")
+        print("Check public profile access, creator permissions, and the download logs above.")
         print("No Buffer post was created and no posting history was changed.")
         return None,None,state
     # Pick a random eligible video; avoid the previous creator when alternatives exist.
