@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Fetch creator videos once daily and queue up to four distinct videos to Buffer."""
 import json, os, random, re, subprocess, sys
+from datetime import datetime, timedelta, time, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 import requests
 from yt_dlp import YoutubeDL
@@ -17,6 +19,8 @@ VIDEO_EXTENSIONS={".mp4",".mov",".m4v",".webm",".mkv",".avi",".mpeg",".mpg",".3g
 MAX_DOWNLOAD_BYTES=200*1024*1024
 VIDEOS_PER_ACCOUNT=5
 QUEUE_PER_RUN=4
+PAKISTAN_TZ=ZoneInfo("Asia/Karachi")
+PUBLISH_TIMES=[time(8,0),time(12,0),time(16,0),time(20,0)]
 
 def read_json(path, default):
     if not path.exists(): return default
@@ -156,7 +160,7 @@ def build_caption(item):
     while len(hashtags)<5: hashtags.append(TAGS[len(hashtags)])
     return "\n".join([title," ".join(hashtags)])
 
-def queue_one_video(item,media,key,channel):
+def queue_one_video(item,media,key,channel,due_at):
     tag=f"creator-video-{re.sub(r'[^a-zA-Z0-9-]','-',str(item['id']))}"
     title=str(item.get("title") or "Trending video").strip()
     caption=build_caption(item)
@@ -174,7 +178,8 @@ def queue_one_video(item,media,key,channel):
         text: {json.dumps(caption,ensure_ascii=False)}
         channelId: {json.dumps(channel)}
         schedulingType: automatic
-        mode: addToQueue
+        mode: customScheduled
+        dueAt: {json.dumps(due_at)}
         metadata: {{ facebook: {{ type: reel }} }}
         assets: [{{ video: {{ url: {json.dumps(url)} }} }}]
       }}) {{
@@ -208,9 +213,24 @@ def main():
         print("No eligible videos found; nothing was added to Buffer.")
         return 0
     queued=0
-    for _,item,media in selected:
+    now=datetime.now(PAKISTAN_TZ)
+    publish_slots=[]
+    # Allocate the next four fixed Pakistan-time slots. On a normal 06:00 run,
+    # all four slots are today at 08:00, 12:00, 16:00 and 20:00.
+    for day_offset in range(8):
+        day=(now+timedelta(days=day_offset)).date()
+        for slot in PUBLISH_TIMES:
+            local_dt=datetime.combine(day,slot,tzinfo=PAKISTAN_TZ)
+            if local_dt > now + timedelta(minutes=2):
+                publish_slots.append(local_dt.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00","Z"))
+            if len(publish_slots)>=len(selected):
+                break
+        if len(publish_slots)>=len(selected):
+            break
+    for index,(_,item,media) in enumerate(selected):
         try:
-            post=queue_one_video(item,media,key,channel)
+            due_at=publish_slots[index]
+            post=queue_one_video(item,media,key,channel,due_at)
             state.setdefault("posted_ids",[]).append(str(item["id"]))
             state["last_account"]=item.get("source_username")
             state["last_post_id"]=post.get("id")
@@ -221,6 +241,7 @@ def main():
         except Exception as exc:
             print(f"FAILED to queue video {item.get('id')}: {exc}",file=sys.stderr)
     print(f"Daily batch complete: {queued}/{QUEUE_PER_RUN} videos confirmed in Buffer.")
+    print("Pakistan publishing slots: 08:00, 12:00, 16:00, 20:00 (Asia/Karachi).")
     if queued<QUEUE_PER_RUN:
         print("ACTION REQUIRED: Check scan/download errors above, available fresh videos, and Buffer/GitHub configuration.")
     return 0 if queued==QUEUE_PER_RUN else 1
