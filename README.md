@@ -1,14 +1,27 @@
 # Authorized Creator Video Queue
 
-This repository runs the TikTok creator-profile ingestion and Buffer queueing system only.
+This repository runs the TikTok creator-profile ingestion and Buffer scheduling system only.
 
-## Daily batch schedule
+## Daily batch and Facebook publishing times
 
-GitHub Actions runs once daily at **07:00 Pakistan Standard Time** (02:00 UTC). Each run scans the configured creator profiles, downloads eligible unposted videos, ranks them by views and engagement, and attempts to add **four distinct videos** to the Buffer queue.
+GitHub Actions runs once daily at **06:00 Pakistan Standard Time** (01:00 UTC). It scans the configured creator profiles, downloads eligible unposted videos, ranks candidates by views and engagement, and attempts to schedule **four distinct videos**.
 
-Buffer's own Facebook channel publishing schedule controls when those four queued videos are actually published. Configure at least four daily publishing slots in Buffer **after 07:00 Pakistan time** if you want all four to publish on the same day. If Buffer has fewer than four slots, extra posts may remain queued for later days.
+The four Facebook publishing times are fixed to Pakistan time:
+- 08:00
+- 12:00
+- 16:00
+- 20:00
 
-The workflow reports the confirmed Buffer count as `Daily batch complete: N/4`. Four daily publications are dependent on successful TikTok profile access/downloads, at least four eligible unposted videos, valid Buffer credentials, and four available Buffer publishing slots. The automation does not bypass platform restrictions or creator permissions.
+The script uses Buffer's exact-time scheduling mode, converting Pakistan local times to UTC timestamps. It does not depend on Buffer's next-available queue slots. If a manual run starts after one or more slots have passed, it uses the next future slots in the same sequence.
+
+## Video selection and duplicates
+
+- The newest video is not mandatory. The system ranks available videos by views and engagement; an older video can be selected when it is a better eligible candidate.
+- It excludes IDs already recorded in `creator_videos/posted.json` by this automation.
+- It prefers rotating between different configured creators.
+- A video is marked posted only after Buffer confirms the scheduled post.
+- Each confirmed video is saved immediately so a later failure does not erase earlier confirmations.
+- The system cannot automatically know about videos manually uploaded to Facebook outside this automation unless those IDs are also added to its posting history.
 
 ## Creator profiles
 
@@ -21,24 +34,25 @@ The active configured profiles are:
 - `hammadeditz_09`
 - `aesthatic_creator`
 
-The workflow scans public profile videos, ranks candidates using views and engagement, and prefers rotating between creators. Only repost content for which the account owner has granted permission.
+Only repost content for which the account owner has granted permission.
 
 ## Download and duplicate handling
 
 - Downloads are kept in the source format; no transcoding is performed.
-- Posted IDs are stored in `creator_videos/posted.json`.
 - GitHub Actions runners are temporary. Missing local files are downloaded again on later runs.
-- A video is marked posted only after Buffer confirms that it was added to the queue.
-- Each confirmed video is saved to history immediately, so a later failure in the batch does not erase earlier confirmations.
 - Videos are hosted as GitHub Release assets before they are sent to Buffer.
 
 ## Buffer configuration
 
-Add these repository Actions secrets:
+Keep these repository Actions secrets configured:
 - `BUFFER_API_KEY`
 - `BUFFER_CHANNEL_ID`
 
-Set the Facebook channel's Buffer publishing schedule to at least four daily slots after 07:00 Pakistan time. The workflow adds four posts to the queue; Buffer determines their publication times.
+Buffer must have automatic publishing enabled for the connected Facebook Page. The exact publishing times are sent with each post by the automation.
+
+## Daily result
+
+The workflow prints `Daily batch complete: N/4 videos confirmed in Buffer`. Four scheduled posts require at least four eligible unposted videos, successful TikTok downloads, valid Buffer credentials, and successful Buffer responses.
 
 ## Local setup
 
