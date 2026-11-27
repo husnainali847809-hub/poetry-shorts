@@ -40,7 +40,7 @@ jobs:
           gh auth setup-git
           python -u creator_video_queue.py
       - name: Save duplicate-prevention history and source manifest
-        if: always() && success()
+        if: always()
         run: |
           if git diff --quiet -- creator_videos/posted.json creator_videos/manifest.json; then
             echo "No posting state or manifest changes to save."
