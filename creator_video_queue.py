@@ -217,7 +217,7 @@ def main():
             queued+=1
             # Persist after every Buffer confirmation so a later failure cannot lose history.
             STATE.parent.mkdir(parents=True,exist_ok=True)
-            STATE.write_text(json.dumps(state,ensure_ascii=False,indent=2)+"\\n",encoding="utf-8")
+            STATE.write_text(json.dumps(state,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
         except Exception as exc:
             print(f"FAILED to queue video {item.get('id')}: {exc}",file=sys.stderr)
     print(f"Daily batch complete: {queued}/{QUEUE_PER_RUN} videos confirmed in Buffer.")
