@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch videos from the configured creator accounts (opt-in) and queue one to Buffer."""
+"""Fetch creator videos once daily and queue up to four distinct videos to Buffer."""
 import json, os, random, re, subprocess, sys
 from pathlib import Path
 import requests
@@ -15,7 +15,8 @@ AUTHORIZED_ACCOUNTS=set(ACCOUNTS)
 TAGS=["#ShortVideos","#TrendingVideos","#ViralClips","#CreatorContent","#ForYou","#Pulsenama"]
 VIDEO_EXTENSIONS={".mp4",".mov",".m4v",".webm",".mkv",".avi",".mpeg",".mpg",".3gp",".ts",".mts",".m2ts",".wmv",".flv"}
 MAX_DOWNLOAD_BYTES=200*1024*1024
-VIDEOS_PER_ACCOUNT=3
+VIDEOS_PER_ACCOUNT=5
+QUEUE_PER_RUN=4
 
 def read_json(path, default):
     if not path.exists(): return default
@@ -102,10 +103,11 @@ def fetch_account_videos():
     MANIFEST.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     print(f"Account scan complete: imported {added} video(s); downloaded formats are kept as provided.")
 
-def choose_video():
+def choose_videos(limit=QUEUE_PER_RUN):
+    """Return up to four best eligible, unposted videos, preferring creator rotation."""
     manifest=read_json(MANIFEST,{"videos":[]})
     state=read_json(STATE,{"posted_ids":[],"last_account":None})
-    posted=set(state.get("posted_ids",[]))
+    posted={str(x) for x in state.get("posted_ids",[])}
     candidates=[]
     for item in manifest.get("videos",[]):
         vid=str(item.get("id","")).strip()
@@ -120,50 +122,44 @@ def choose_video():
         likes=max(0,int(item.get("likes",0) or 0))
         comments=max(0,int(item.get("comments",0) or 0))
         engagement=(likes+2*comments)/max(views,1)
-        # Filter weak-performing posts before they can enter the queue.
         min_views=int(os.getenv("MIN_VIDEO_VIEWS","0"))
         min_engagement=float(os.getenv("MIN_VIDEO_ENGAGEMENT","0"))
         if views < min_views or engagement < min_engagement: continue
         score=(views**0.35)*(1+min(engagement,1.0)*5)
         candidates.append((score,item,media))
+    candidates.sort(key=lambda x:x[0],reverse=True)
     print(f"Eligible downloaded videos: {len(candidates)}")
-    if not candidates:
-        print("SKIP: No downloaded, unposted, creator-authorized video is available.")
-        print("Check public profile access, creator permissions, and the download logs above.")
-        print("No Buffer post was created and no posting history was changed.")
-        return None,None,state
-    # Pick a random eligible video; avoid the previous creator when alternatives exist.
+    selected=[]
+    remaining=list(candidates)
     last=state.get("last_account")
-    alternatives=[candidate for candidate in candidates if candidate[1].get("source_username") != last]
-    pool=alternatives or candidates
-    _,chosen_item,chosen_media=random.choice(pool)
-    return chosen_item,chosen_media,state
+    while remaining and len(selected)<limit:
+        # Prefer a different creator from the previous selection whenever possible.
+        different=[x for x in remaining if x[1].get("source_username") != last]
+        pool=different or remaining
+        chosen=pool[0]
+        selected.append(chosen)
+        remaining.remove(chosen)
+        last=chosen[1].get("source_username")
+    if len(selected)<limit:
+        print(f"WARNING: Only {len(selected)} eligible unposted video(s) are available; target is {limit}.")
+    return selected,state
 
-def main():
-    fetch_account_videos()
-    if os.getenv("ENABLE_BUFFER_POSTING","true").lower() not in {"1","true","yes","on"}:
-        print("Buffer posting is OFF (workflow input); videos were not queued.")
-        return 0
-    key=os.getenv("BUFFER_API_KEY","").strip()
-    channel=os.getenv("BUFFER_CHANNEL_ID","").strip()
-    if not key or not channel:
-        print("Buffer skipped: BUFFER_API_KEY / BUFFER_CHANNEL_ID are not configured.")
-        return 0
-    item,media,state=choose_video()
-    if item is None: return 0
-    source=item["source_username"]
+def build_caption(item):
     title=str(item.get("title") or "Trending video").strip()
-    # Never expose creator usernames, @handles, source URLs, or attribution in the Facebook caption.
+    # Keep the existing caption style; do not expose source handles or URLs.
     title=re.sub(r"@[A-Za-z0-9._]+","",title)
     for username in ACCOUNTS:
         title=re.sub(re.escape(username),"",title,flags=re.IGNORECASE)
-    title=re.sub(r"\s+"," ",title).strip(" -|•")
+    title=re.sub(r"\\s+"," ",title).strip(" -|•")
     if not title: title="Trending video"
     hashtags=[("#"+str(t).lstrip("#")) for t in (item.get("hashtags") or TAGS) if str(t).strip()][:6]
     while len(hashtags)<5: hashtags.append(TAGS[len(hashtags)])
-    caption="\n".join([title," ".join(hashtags)])
+    return "\\n".join([title," ".join(hashtags)])
+
+def queue_one_video(item,media,key,channel):
     tag=f"creator-video-{re.sub(r'[^a-zA-Z0-9-]','-',str(item['id']))}"
-    # Reuse an existing release when a previous run created it but Buffer failed.
+    title=str(item.get("title") or "Trending video").strip()
+    caption=build_caption(item)
     release_exists=subprocess.run(["gh","release","view",tag],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
     if release_exists:
         subprocess.run(["gh","release","upload",tag,str(media),"--clobber"],check=True)
@@ -194,13 +190,40 @@ def main():
     result=(payload.get("data") or {}).get("createPost") or {}
     post=result.get("post")
     if not post: raise RuntimeError(result.get("message") or "Buffer did not confirm the post.")
-    state.setdefault("posted_ids",[]).append(str(item["id"]))
-    state["last_account"]=source
-    state["last_post_id"]=post.get("id")
-    STATE.parent.mkdir(parents=True,exist_ok=True)
-    STATE.write_text(json.dumps(state,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-    print(f"Queued creator video {item['id']} from @{source}; Buffer post {post.get('id')}.")
-    return 0
+    print(f"Queued creator video {item['id']} from @{item['source_username']}; Buffer post {post.get('id')}; dueAt={post.get('dueAt')}.")
+    return post
+
+def main():
+    fetch_account_videos()
+    if os.getenv("ENABLE_BUFFER_POSTING","true").lower() not in {"1","true","yes","on"}:
+        print("Buffer posting is OFF; videos were not queued.")
+        return 0
+    key=os.getenv("BUFFER_API_KEY","").strip()
+    channel=os.getenv("BUFFER_CHANNEL_ID","").strip()
+    if not key or not channel:
+        print("Buffer skipped: BUFFER_API_KEY / BUFFER_CHANNEL_ID are not configured.")
+        return 0
+    selected,state=choose_videos(QUEUE_PER_RUN)
+    if not selected:
+        print("No eligible videos found; nothing was added to Buffer.")
+        return 0
+    queued=0
+    for _,item,media in selected:
+        try:
+            post=queue_one_video(item,media,key,channel)
+            state.setdefault("posted_ids",[]).append(str(item["id"]))
+            state["last_account"]=item.get("source_username")
+            state["last_post_id"]=post.get("id")
+            queued+=1
+            # Persist after every Buffer confirmation so a later failure cannot lose history.
+            STATE.parent.mkdir(parents=True,exist_ok=True)
+            STATE.write_text(json.dumps(state,ensure_ascii=False,indent=2)+"\\n",encoding="utf-8")
+        except Exception as exc:
+            print(f"FAILED to queue video {item.get('id')}: {exc}",file=sys.stderr)
+    print(f"Daily batch complete: {queued}/{QUEUE_PER_RUN} videos confirmed in Buffer.")
+    if queued<QUEUE_PER_RUN:
+        print("ACTION REQUIRED: Check scan/download errors above, available fresh videos, and Buffer/GitHub configuration.")
+    return 0 if queued==QUEUE_PER_RUN else 1
 
 if __name__=="__main__":
     try: sys.exit(main())
