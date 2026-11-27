@@ -6,7 +6,7 @@ This repository runs the TikTok creator-profile ingestion and Buffer queueing sy
 
 GitHub Actions runs once daily at **07:00 Pakistan Standard Time** (02:00 UTC). Each run scans the configured creator profiles, downloads eligible unposted videos, ranks them by views and engagement, and attempts to add **four distinct videos** to the Buffer queue.
 
-Buffer's own Facebook channel publishing schedule controls when those four queued videos are actually published. Configure at least four daily publishing slots in Buffer if you want all four to publish on the same day. If Buffer has fewer than four slots, extra posts may remain queued for later days.
+Buffer's own Facebook channel publishing schedule controls when those four queued videos are actually published. Configure at least four daily publishing slots in Buffer **after 07:00 Pakistan time** if you want all four to publish on the same day. If Buffer has fewer than four slots, extra posts may remain queued for later days.
 
 The workflow reports the confirmed Buffer count as `Daily batch complete: N/4`. Four daily publications are dependent on successful TikTok profile access/downloads, at least four eligible unposted videos, valid Buffer credentials, and four available Buffer publishing slots. The automation does not bypass platform restrictions or creator permissions.
 
@@ -38,7 +38,7 @@ Add these repository Actions secrets:
 - `BUFFER_API_KEY`
 - `BUFFER_CHANNEL_ID`
 
-Set the Facebook channel's Buffer publishing schedule to at least four daily slots. The workflow adds four posts to the queue; Buffer determines their publication times.
+Set the Facebook channel's Buffer publishing schedule to at least four daily slots after 07:00 Pakistan time. The workflow adds four posts to the queue; Buffer determines their publication times.
 
 ## Local setup
 
