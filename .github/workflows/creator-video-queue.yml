@@ -3,8 +3,8 @@ name: Authorized Creator Video Queue
 on:
   workflow_dispatch:
   schedule:
-    # One daily batch run at 07:00 Pakistan time (02:00 UTC).
-    - cron: "0 2 * * *"
+    # One daily batch run at 06:00 Pakistan time (01:00 UTC).
+    - cron: "0 1 * * *"
 
 permissions:
   contents: write
