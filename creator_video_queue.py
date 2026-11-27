@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch videos from the single approved TikTok creator and schedule four daily Facebook Reels."""
+"""Fetch creator videos once daily and queue up to four distinct videos to Buffer."""
 import json, os, random, re, subprocess, sys
 from datetime import datetime, timedelta, time, timezone
 from zoneinfo import ZoneInfo
@@ -11,13 +11,13 @@ ROOT=Path(__file__).resolve().parent
 MANIFEST=ROOT/"creator_videos"/"manifest.json"
 STATE=ROOT/"creator_videos"/"posted.json"
 INBOX=ROOT/"creator_videos"/"inbox"
-ACCOUNTS=["viral_ai_toon"]
+ACCOUNTS=["khudserabtak","sultan_editx00","satisfyingbytiktok","ismail_wri8s_6","haya_aesticxs","hammadeditz_09","aesthatic_creator"]
 # The repository owner confirmed repost permission for these configured creators.
 AUTHORIZED_ACCOUNTS=set(ACCOUNTS)
 TAGS=["#ShortVideos","#TrendingVideos","#ViralClips","#CreatorContent","#ForYou","#Pulsenama"]
 VIDEO_EXTENSIONS={".mp4",".mov",".m4v",".webm",".mkv",".avi",".mpeg",".mpg",".3gp",".ts",".mts",".m2ts",".wmv",".flv"}
 MAX_DOWNLOAD_BYTES=200*1024*1024
-VIDEOS_PER_ACCOUNT=12
+VIDEOS_PER_ACCOUNT=5
 QUEUE_PER_RUN=4
 PAKISTAN_TZ=ZoneInfo("Asia/Karachi")
 PUBLISH_TIMES=[time(8,0),time(12,0),time(16,0),time(20,0)]
@@ -52,7 +52,7 @@ def fetch_account_videos():
         profile=f"https://www.tiktok.com/@{username}"
         print(f"[{username}] Scanning public profile: {profile}")
         opts={"quiet":True,"no_warnings":True,"extract_flat":"in_playlist","skip_download":True,
-              "playlistend":50,"socket_timeout":25}
+              "playlistend":20,"socket_timeout":25}
         try:
             with YoutubeDL(opts) as ydl:
                 info=ydl.extract_info(profile,download=False)
@@ -108,7 +108,7 @@ def fetch_account_videos():
     print(f"Account scan complete: imported {added} video(s); downloaded formats are kept as provided.")
 
 def choose_videos(limit=QUEUE_PER_RUN):
-    """Return up to four best eligible, unposted videos from the single configured creator."""
+    """Return up to four best eligible, unposted videos, preferring creator rotation."""
     manifest=read_json(MANIFEST,{"videos":[]})
     state=read_json(STATE,{"posted_ids":[],"last_account":None})
     posted={str(x) for x in state.get("posted_ids",[])}
@@ -133,7 +133,17 @@ def choose_videos(limit=QUEUE_PER_RUN):
         candidates.append((score,item,media))
     candidates.sort(key=lambda x:x[0],reverse=True)
     print(f"Eligible downloaded videos: {len(candidates)}")
-    selected=candidates[:limit]
+    selected=[]
+    remaining=list(candidates)
+    last=state.get("last_account")
+    while remaining and len(selected)<limit:
+        # Prefer a different creator from the previous selection whenever possible.
+        different=[x for x in remaining if x[1].get("source_username") != last]
+        pool=different or remaining
+        chosen=pool[0]
+        selected.append(chosen)
+        remaining.remove(chosen)
+        last=chosen[1].get("source_username")
     if len(selected)<limit:
         print(f"WARNING: Only {len(selected)} eligible unposted video(s) are available; target is {limit}.")
     return selected,state
@@ -200,8 +210,8 @@ def main():
         return 0
     selected,state=choose_videos(QUEUE_PER_RUN)
     if not selected:
-        print("No eligible unposted videos found from @viral_ai_toon; four-post daily target was not met.",file=sys.stderr)
-        return 1
+        print("No eligible videos found; nothing was added to Buffer.")
+        return 0
     queued=0
     now=datetime.now(PAKISTAN_TZ)
     publish_slots=[]
