@@ -1,58 +1,44 @@
-# Authorized Creator Video Queue
+# Single-Creator Cartoon Video Queue
 
-This repository runs the TikTok creator-profile ingestion and Buffer scheduling system only.
+This repository now uses **only the approved TikTok account `@viral_ai_toon`** as its video source. The previous creator-account list is no longer active.
 
-## Daily batch and Facebook publishing times
+## Daily Facebook schedule
 
-GitHub Actions runs once daily at **06:00 Pakistan Standard Time** (01:00 UTC). It scans the configured creator profiles, downloads eligible unposted videos, ranks candidates by views and engagement, and attempts to schedule **four distinct videos**.
+GitHub Actions runs once daily at **06:00 Pakistan time** (01:00 UTC). It scans the configured TikTok profile, downloads eligible videos that have not already been used by this automation, and attempts to schedule four distinct Facebook Reels through Buffer.
 
-The four Facebook publishing times are fixed to Pakistan time:
+Publishing slots (Pakistan time):
 - 08:00
 - 12:00
 - 16:00
 - 20:00
 
-The script uses Buffer's exact-time scheduling mode, converting Pakistan local times to UTC timestamps. It does not depend on Buffer's next-available queue slots. If a manual run starts after one or more slots have passed, it uses the next future slots in the same sequence.
+## Video selection
 
-## Video selection and duplicates
+- Only `@viral_ai_toon` is scanned.
+- The newest video is not mandatory; any eligible unposted video from the profile can be selected.
+- The script ranks candidates using available views and engagement data, then selects up to four.
+- Videos already recorded in `creator_videos/posted.json` are excluded.
+- The original downloaded format is retained; no trimming or transcoding is performed.
+- Downloads larger than 200 MB are rejected to keep assets manageable for GitHub Release hosting and Buffer delivery.
+- Common video extensions are accepted by the downloader, but Buffer/Facebook may reject formats they do not support. No conversion is performed because the original format is preserved.
 
-- The newest video is not mandatory. The system ranks available videos by views and engagement; an older video can be selected when it is a better eligible candidate.
-- It excludes IDs already recorded in `creator_videos/posted.json` by this automation.
-- It prefers rotating between different configured creators.
-- A video is marked posted only after Buffer confirms the scheduled post.
-- Each confirmed video is saved immediately so a later failure does not erase earlier confirmations.
-- The system cannot automatically know about videos manually uploaded to Facebook outside this automation unless those IDs are also added to its posting history.
+## Captions and attribution
 
-## Creator profiles
+The existing caption and hashtag generator remains enabled. The TikTok username and source URL are not added to the Facebook caption. Use this automation only for videos covered by the creator's reposting permission; removing attribution from the caption does not replace any legal or platform attribution requirement.
 
-The active configured profiles are:
-- `khudserabtak`
-- `sultan_editx00`
-- `satisfyingbytiktok`
-- `ismail_wri8s_6`
-- `haya_aesticxs`
-- `hammadeditz_09`
-- `aesthatic_creator`
+## Daily target and limitations
 
-Only repost content for which the account owner has granted permission.
+The automation attempts four scheduled posts per day. It cannot guarantee four publishes if the profile does not provide at least four eligible unposted videos, downloads fail, video files exceed the size limit, or Buffer/Facebook rejects a file or post. A run with fewer than four Buffer confirmations fails visibly instead of reporting success.
 
-## Download and duplicate handling
-
-- Downloads are kept in the source format; no transcoding is performed.
-- GitHub Actions runners are temporary. Missing local files are downloaded again on later runs.
-- Videos are hosted as GitHub Release assets before they are sent to Buffer.
+The state file tracks videos used by this automation. It does not automatically detect videos manually uploaded to Facebook outside this workflow.
 
 ## Buffer configuration
 
-Keep these repository Actions secrets configured:
+Repository Actions secrets required:
 - `BUFFER_API_KEY`
 - `BUFFER_CHANNEL_ID`
 
-Buffer must have automatic publishing enabled for the connected Facebook Page. The exact publishing times are sent with each post by the automation.
-
-## Daily result
-
-The workflow prints `Daily batch complete: N/4 videos confirmed in Buffer`. Four scheduled posts require at least four eligible unposted videos, successful TikTok downloads, valid Buffer credentials, and successful Buffer responses.
+Buffer must be connected to the intended Facebook Page and support publishing the submitted video format.
 
 ## Local setup
 
