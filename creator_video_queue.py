@@ -216,7 +216,7 @@ def main():
             "Buffer credentials are missing: configure BUFFER_API_KEY and BUFFER_CHANNEL_ID "
             "in GitHub Actions secrets. Refusing to report a successful run without queueing."
         )
-    selected,state=choose_videos(QUEUE_PER_RUN)
+    selected,state=choose_videos(QUEUE_PER_RUN*len(ACCOUNTS))
     if not selected:
         print("No eligible videos found; nothing was added to Buffer.")
         return 0
@@ -235,9 +235,13 @@ def main():
                 break
         if len(publish_slots)>=len(selected):
             break
-    for index,(_,item,media) in enumerate(selected):
+    for _,item,media in selected:
+        if queued>=QUEUE_PER_RUN:
+            break
         try:
-            due_at=publish_slots[index]
+            # If one source file or release upload fails, use the next ranked
+            # eligible video and keep the next unfilled Buffer slot.
+            due_at=publish_slots[queued]
             post=queue_one_video(item,media,key,channel,due_at)
             state.setdefault("posted_ids",[]).append(str(item["id"]))
             state["last_account"]=item.get("source_username")
