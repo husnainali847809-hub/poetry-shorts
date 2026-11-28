@@ -76,11 +76,17 @@ def fetch_account_videos():
             safe_id=re.sub(r"[^A-Za-z0-9_-]","_",f"{username}_{video_id}")
             outtmpl=str(INBOX/(safe_id+".%(ext)s"))
             try:
-                dl_opts={"quiet":True,"no_warnings":True,"noplaylist":True,"format":"best",
-                         "outtmpl":outtmpl,"max_filesize":MAX_DOWNLOAD_BYTES,"socket_timeout":45}
+                dl_opts={"quiet":True,"no_warnings":True,"noplaylist":True,
+                         # Exclude audio-only renditions; TikTok may expose an MP3 as "best".
+                         "format":"best[ext=mp4][vcodec!=none]/best[vcodec!=none]/bestvideo+bestaudio/best[ext=mp4]/best",
+                         "outtmpl":outtmpl,"max_filesize":MAX_DOWNLOAD_BYTES,"socket_timeout":45,
+                         "merge_output_format":"mp4"}
                 with YoutubeDL(dl_opts) as ydl:
                     video_info=ydl.extract_info(url,download=True)
                     filepath=Path(ydl.prepare_filename(video_info))
+                    if not filepath.exists():
+                        merged=filepath.with_suffix(".mp4")
+                        if merged.exists(): filepath=merged
                 if not filepath.exists() or filepath.suffix.lower() not in VIDEO_EXTENSIONS or filepath.stat().st_size<100_000:
                     print(f"[{username}] SKIP {video_id}: unsupported, missing, or too-small video.")
                     filepath.unlink(missing_ok=True)
@@ -206,8 +212,10 @@ def main():
     key=os.getenv("BUFFER_API_KEY","").strip()
     channel=os.getenv("BUFFER_CHANNEL_ID","").strip()
     if not key or not channel:
-        print("Buffer skipped: BUFFER_API_KEY / BUFFER_CHANNEL_ID are not configured.")
-        return 0
+        raise RuntimeError(
+            "Buffer credentials are missing: configure BUFFER_API_KEY and BUFFER_CHANNEL_ID "
+            "in GitHub Actions secrets. Refusing to report a successful run without queueing."
+        )
     selected,state=choose_videos(QUEUE_PER_RUN)
     if not selected:
         print("No eligible videos found; nothing was added to Buffer.")
